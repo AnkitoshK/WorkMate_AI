@@ -1,0 +1,11 @@
+{
+  "name": "workmate-ai",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.6.5",
+  "scripts": {
+    "dev:api": "pnpm --filter @workmate/api dev",
+    "dev:web": "pnpm --filter @workmate/web dev",
+    "dev:mobile": "pnpm --filter @workmate/mobile start"
+  }
+}

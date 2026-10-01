@@ -1,0 +1,47 @@
+# node_modules/
+# .env
+# .env.*
+# !.env.example
+# dist/
+# build/
+# .expo/
+# .next/
+# coverage/
+# *.log
+# .DS_Store
+# *.tsbuildinfo
+# apps/api/prisma/*.db
+
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+.next/
+
+# Expo
+.expo/
+
+# Testing
+coverage/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary
+tmp/
+temp/
