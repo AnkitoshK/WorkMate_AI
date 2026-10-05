@@ -370,7 +370,12 @@ async function main() {
   const deepDiveDocx = path.join(__dirname, '..', 'docs', 'WorkMate_AI_Deep_Dive_Learning_Guide.docx');
   const deepDiveParentFolderDocx = path.join(__dirname, '..', '..', 'WorkMate_AI_Deep_Dive_Learning_Guide.docx');
 
+  const codePageGuideMd = path.join(__dirname, '..', 'docs', 'WORKMATE_AI_CODE_AND_PAGE_ARCHITECTURE_GUIDE.md');
+  const codePageGuideDocx = path.join(__dirname, '..', 'docs', 'WorkMate_AI_Code_And_Page_Architecture_Guide.docx');
+  const codePageParentFolderDocx = path.join(__dirname, '..', '..', 'WorkMate_AI_Code_And_Page_Architecture_Guide.docx');
+
   console.log('Converting Markdown files to styled .docx documents...');
+  await convertMarkdownToDocx(codePageGuideMd, codePageGuideDocx, 'WorkMate AI - Code-by-Code & Page-by-Page System Architecture Guide');
   await convertMarkdownToDocx(deepDiveMd, deepDiveDocx, 'WorkMate AI - Deep Dive Learning & Architecture Guide');
   await convertMarkdownToDocx(easyGuideMd, easyGuideDocx, 'Easy Understanding Guide & Flow');
   await convertMarkdownToDocx(userManualMd, userManualDocx, 'User Manual & End-to-End System Guide');
@@ -379,21 +384,22 @@ async function main() {
 
   // Copy files to parent folder, downloads, and desktop
   try {
+    fs.copyFileSync(codePageGuideDocx, codePageParentFolderDocx);
     fs.copyFileSync(deepDiveDocx, deepDiveParentFolderDocx);
     fs.copyFileSync(masterDocx, parentFolderDocx);
     fs.copyFileSync(compManualDocx, compParentFolderDocx);
-    console.log(`✓ Copied deep dive guide to parent directory: ${deepDiveParentFolderDocx}`);
+    console.log(`✓ Copied code & page guide to parent directory: ${codePageParentFolderDocx}`);
 
     const userProfile = process.env.USERPROFILE || 'C:\\Users\\ankit';
-    const downloadsPath = path.join(userProfile, 'Downloads', 'WorkMate_AI_Deep_Dive_Learning_Guide.docx');
-    const desktopPath = path.join(userProfile, 'OneDrive', 'Desktop', 'WorkMate_AI_Deep_Dive_Learning_Guide.docx');
+    const downloadsPath = path.join(userProfile, 'Downloads', 'WorkMate_AI_Code_And_Page_Architecture_Guide.docx');
+    const desktopPath = path.join(userProfile, 'OneDrive', 'Desktop', 'WorkMate_AI_Code_And_Page_Architecture_Guide.docx');
 
-    fs.copyFileSync(deepDiveDocx, downloadsPath);
-    console.log(`✓ Copied deep dive guide to Downloads: ${downloadsPath}`);
+    fs.copyFileSync(codePageGuideDocx, downloadsPath);
+    console.log(`✓ Copied code & page guide to Downloads: ${downloadsPath}`);
 
     if (fs.existsSync(path.dirname(desktopPath))) {
-      fs.copyFileSync(deepDiveDocx, desktopPath);
-      console.log(`✓ Copied deep dive guide to Desktop: ${desktopPath}`);
+      fs.copyFileSync(codePageGuideDocx, desktopPath);
+      console.log(`✓ Copied code & page guide to Desktop: ${desktopPath}`);
     }
   } catch (err) {
     console.warn('Note on file copy:', err.message);
