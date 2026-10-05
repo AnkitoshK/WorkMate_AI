@@ -3,8 +3,17 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  ENGINEER
+  USER
 }
 
 enum TaskStatus {
@@ -13,13 +22,62 @@ enum TaskStatus {
   DONE
 }
 
+enum IssueStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum IssuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum IssueCategory {
+  HARDWARE
+  SOFTWARE
+  NETWORK
+  FACILITY
+  SAFETY
+  OTHER
+}
+
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  tasks     Task[]
+  id             String    @id @default(cuid())
+  name           String
+  email          String    @unique
+  password       String?
+  role           Role      @default(USER)
+  department     String?
+  avatar         String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  tasks          Task[]
+  reportedIssues Issue[]   @relation("ReportedIssues")
+  assignedIssues Issue[]   @relation("AssignedIssues")
+  comments       Comment[]
+}
+
+model ServiceAsset {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  type          String   // WEB_APP, MOBILE_APP, API_SERVICE, HARDWARE, FACILITY
+  department    String   // Software & Cloud Ops, Facilities & Physical Plant, Network, Hardware
+  environment   String   @default("PRODUCTION")
+  healthStatus  String   @default("OPERATIONAL") // OPERATIONAL, DEGRADED, OUTAGE
+  slaTargetMins Int      @default(60)
+  urlOrLocation String?
+  description   String?
+  issues        Issue[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([department])
 }
 
 model Task {
@@ -28,11 +86,69 @@ model Task {
   description String?
   status      TaskStatus @default(TODO)
   priority    Int        @default(2)
+  category    String?
   dueDate     DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   ownerId     String
   owner       User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  issueId     String?
+  issue       Issue?     @relation(fields: [issueId], references: [id], onDelete: SetNull)
 
   @@index([ownerId, createdAt])
+  @@index([status])
 }
+
+model Issue {
+  id                String        @id @default(cuid())
+  ticketNumber      Int           @default(autoincrement())
+  title             String
+  description       String
+  status            IssueStatus   @default(OPEN)
+  priority          IssuePriority @default(MEDIUM)
+  category          IssueCategory @default(OTHER)
+  department        String?       // Assigned Department
+  source            String        @default("WEB_PORTAL") // WEB_PORTAL, MOBILE_APP, API_MONITOR, FIELD_MANUAL
+  affectedUrl       String?       // Specific webpage or mobile screen
+  location          String?
+  resolutionNotes   String?
+  aiSummary         String?
+  aiSuggestedAction String?
+  aiRootCause       String?
+  aiConfidence      Float?
+  slaDeadline       DateTime?
+  slaBreached       Boolean       @default(false)
+  serviceAssetId    String?
+  serviceAsset      ServiceAsset? @relation(fields: [serviceAssetId], references: [id], onDelete: SetNull)
+  reporterId        String
+  reporter          User          @relation("ReportedIssues", fields: [reporterId], references: [id], onDelete: Cascade)
+  assigneeId        String?
+  assignee          User?         @relation("AssignedIssues", fields: [assigneeId], references: [id], onDelete: SetNull)
+  tasks             Task[]
+  comments          Comment[]
+  resolvedAt        DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([status, priority])
+  @@index([reporterId])
+  @@index([assigneeId])
+  @@index([ticketNumber])
+  @@index([serviceAssetId])
+  @@index([department])
+}
+
+model Comment {
+  id            String   @id @default(cuid())
+  content       String
+  isAiGenerated Boolean  @default(false)
+  issueId       String
+  issue         Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  authorId      String
+  author        User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+
+  @@index([issueId, createdAt])
+}
+
+

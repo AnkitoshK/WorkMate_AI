@@ -4,8 +4,23 @@
   "private": true,
   "packageManager": "pnpm@10.6.5",
   "scripts": {
+    "dev": "concurrently -n \"api,web\" -c \"cyan,magenta\" \"pnpm dev:api\" \"pnpm dev:web\"",
+    "dev:all": "concurrently -n \"api,web,mobile\" -c \"cyan,magenta,yellow\" \"pnpm dev:api\" \"pnpm dev:web\" \"pnpm dev:mobile\"",
     "dev:api": "pnpm --filter @workmate/api dev",
     "dev:web": "pnpm --filter @workmate/web dev",
     "dev:mobile": "pnpm --filter @workmate/mobile start"
+  },
+  "dependencies": {
+    "@neon/config": "^1.8.3",
+    "@neon/env": "^1.4.8"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5",
+    "docx": "^9.8.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "@expo/metro-runtime": "57.0.16"
+    }
   }
 }

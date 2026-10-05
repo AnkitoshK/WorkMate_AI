@@ -1,47 +1,104 @@
-# WorkMate AI
+# ⚡ WorkMate AI — Full-Stack Industrial Ticketing & Field Operations Platform
 
-A learning project for task and issue management across field and office teams. The first milestone is deliberately small: an Expo mobile app, a Next.js dashboard, an Express API, PostgreSQL, Prisma, and task CRUD.
+> A full-stack, enterprise-grade task and incident management platform for field engineers and office operations teams, powered by autonomous AI triage, Neon Serverless Postgres, Express REST API, Next.js dashboard, and Expo React Native mobile.
 
-## Stack
+---
 
-- Mobile: Expo + React Native + Expo Router
-- Web: Next.js App Router + TypeScript
-- API: Node.js + Express + TypeScript + Zod
-- Database: PostgreSQL + Prisma
-- Workspace: pnpm
+## 🌟 Key Features
 
-## Repository layout
+1. **Intelligent Ticketing & Incident Workflow**:
+   - Multi-status issue lifecycle: `OPEN` ➔ `ASSIGNED` ➔ `IN_PROGRESS` ➔ `RESOLVED` ➔ `CLOSED`.
+   - Priority assessment: `LOW`, `MEDIUM`, `HIGH`, `URGENT` with live glowing pulse alerts.
+   - Categorization across critical domains: `FACILITY`, `NETWORK`, `HARDWARE`, `SAFETY`, `SOFTWARE`, `OTHER`.
+   - Kanban board with drag-free quick actions & full Table view switcher.
+   - Rich Ticket Detail Modal with collaboration thread, resolution notes, and live re-assignment.
+
+2. **WorkMate AI Copilot**:
+   - **Autonomous Incident Triage**: Automatically extracts failure patterns, determines likely root causes, estimates SLA priority, and generates numbered step-by-step Standard Operating Procedure (SOP) remediation checklists.
+   - **Executive Shift Briefing**: Generates real-time operational summaries across active tickets, overdue work orders, and team dispatch bottlenecks.
+   - **Dual-Engine Architecture**: Seamlessly calls Google Gemini API when configured, with a built-in deterministic domain intelligence engine for 100% resilient offline/evaluation execution.
+
+3. **Field Task Dispatching**:
+   - Scheduled work orders linked directly to parent incident tickets.
+   - Due date tracking, category tags, and 1-click status toggling.
+
+4. **Multi-Role Profile Simulation**:
+   - Instant live switcher between roles:
+     - 👩‍💼 **Sarah Chen** (Executive Admin)
+     - 👨‍💼 **Marcus Vance** (Operations & Dispatch Manager)
+     - 👷 **Alex Rivera** (Senior Software Engineer)
+     - 👩‍💻 **Priya Sharma** (Network & Systems Specialist)
+
+5. **Cross-Platform Experience**:
+   - **Web Dashboard**: Next.js App Router with ultra-premium dark glassmorphic styling, real-time KPI metrics, and AI sandbox.
+   - **Mobile App**: Expo React Native on-call software engineer application for rapid on-site updates and mobile incident logging.
+
+---
+
+## 🏗️ Architecture
 
 ```text
-apps/mobile  Expo app
-apps/web     Next.js dashboard
-apps/api     Express REST API and Prisma schema
-docs         Setup and architecture notes
+┌───────────────────────────────┐        ┌───────────────────────────────┐
+│     Next.js Web Dashboard     │        │    Expo React Native Mobile   │
+│       (Admin & Dispatch)      │        │      (On-Call Engineers)      │
+└───────────────┬───────────────┘        └───────────────┬───────────────┘
+                │               HTTP / REST API          │
+                └───────────────────────┬────────────────┘
+                                        ▼
+                        ┌───────────────────────────────┐
+                        │     Express REST API Server   │
+                        │   (Routes, Services, AI Engine)│
+                        └───────────────┬───────────────┘
+                                        │
+                         Prisma ORM     │    AI Gateway / Gemini
+                                        ▼
+                        ┌───────────────────────────────┐
+                        │     Neon Serverless Postgres  │
+                        │   (Users, Issues, Comments)   │
+                        └───────────────────────────────┘
 ```
 
-## Local setup
+---
 
-Requirements: Node.js 20.19+ (Node 22 recommended), pnpm 10, and a PostgreSQL database.
+## 🚀 Live Local Endpoints
 
-1. Enable pnpm with `corepack enable` (or install pnpm using its official instructions).
-2. Run `pnpm install` from the repository root.
-3. Copy `apps/api/.env.example` to `apps/api/.env` and set `DATABASE_URL`.
-4. Run `pnpm --filter @workmate/api prisma:migrate` to create the initial database schema, then `pnpm --filter @workmate/api db:seed` to create a demo owner for the first CRUD screens.
-5. Start services in separate terminals with `pnpm dev:api`, `pnpm dev:web`, and `pnpm dev:mobile`.
+- **Web Dashboard**: [http://localhost:3000](http://localhost:3000)
+- **API Health Check**: [http://localhost:4000/health](http://localhost:4000/health)
+- **API Metrics**: [http://localhost:4000/api/stats](http://localhost:4000/api/stats)
+- **API Tickets**: [http://localhost:4000/api/issues](http://localhost:4000/api/issues)
+- **API Tasks**: [http://localhost:4000/api/tasks](http://localhost:4000/api/tasks)
 
-The API listens on port 4000. The web dashboard uses `http://localhost:4000` by default. For a physical phone, set the mobile API URL to your computer's LAN address in `apps/mobile/.env`.
+---
 
-## First endpoints
+## 🛠️ Tech Stack
 
-- `GET /health`
-- `GET /api/tasks`
-- `GET /api/tasks/:id`
-- `POST /api/tasks`
-- `PATCH /api/tasks/:id`
-- `DELETE /api/tasks/:id`
+- **Frontend**: Next.js 15 App Router, React 19, Vanilla CSS Glassmorphism
+- **Mobile**: Expo SDK 57, React Native, Safe Area Context
+- **Backend**: Node.js, Express, TypeScript, Zod Validation
+- **Database & ORM**: Neon Serverless PostgreSQL, Prisma ORM
+- **AI Engine**: WorkMate Autonomous Domain Intelligence + Google Gemini Integration
+- **Package Management**: pnpm monorepo workspace
 
-Task writes need an `ownerId` until authentication is introduced in a later milestone. AI keys, database credentials, and future signing secrets stay on the server.
+---
 
-## Learning sequence
+## 💻 Quick Start & Evaluation Guide
 
-Follow [docs/setup.md](docs/setup.md) and [docs/architecture.md](docs/architecture.md). Authentication, issues, AI, realtime, Redis, tests, Docker, and deployment are later milestones; they are intentionally not part of the first slice.
+### 1. Start API Server:
+```bash
+cd apps/api
+npm run start
+# Listens on http://localhost:4000
+```
+
+### 2. Start Web Dashboard:
+```bash
+cd apps/web
+npm run start
+# Available at http://localhost:3000
+```
+
+### 3. Start Mobile App (Optional):
+```bash
+cd apps/mobile
+npm run start
+```

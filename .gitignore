@@ -45,3 +45,5 @@ Thumbs.db
 # Temporary
 tmp/
 temp/
+.neon
+*.tsbuildinfo
