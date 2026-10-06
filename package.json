@@ -9,7 +9,11 @@
     "dev:all": "concurrently -n \"api,web,mobile\" -c \"cyan,magenta,yellow\" \"pnpm dev:api\" \"pnpm dev:web\" \"pnpm dev:mobile\"",
     "dev:api": "pnpm --filter @workmate/api dev",
     "dev:web": "pnpm --filter @workmate/web dev",
-    "dev:mobile": "pnpm --filter @workmate/mobile start"
+    "dev:mobile": "pnpm --filter @workmate/mobile start",
+    "build:api": "pnpm --filter @workmate/api build",
+    "build:web": "pnpm --filter @workmate/web build",
+    "start:api": "pnpm --filter @workmate/api start",
+    "start:web": "pnpm --filter @workmate/web start"
   },
   "dependencies": {
     "@neon/config": "^1.8.3",

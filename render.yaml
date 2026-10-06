@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: workmate-api
+    runtime: node
+    plan: free
+    region: ohio
+    buildCommand: pnpm install && pnpm build:api
+    startCommand: pnpm start:api
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: PNPM_VERSION
+        value: 10.6.5
+      - key: PORT
+        value: 10000
