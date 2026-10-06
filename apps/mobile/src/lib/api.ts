@@ -4,35 +4,32 @@ import { storage } from "./storage";
 
 /**
  * Dynamically resolves the API Server URL:
- * 1. Checks if the user manually specified an endpoint in the app connection settings.
- * 2. Checks process.env.EXPO_PUBLIC_API_URL.
- * 3. On Physical Mobile Devices in Expo Go: extracts the host machine's LAN IP from Constants.expoConfig?.hostUri.
- * 4. Fallback for the current local workstation Wi-Fi subnet (192.168.137.200:4000).
- * 5. Web browser fallback: uses window.location.hostname:4000.
+ * 1. Web browser environment: Always prioritizes window.location.hostname so localhost:3000 connects to localhost:4000.
+ * 2. Manually saved custom endpoint by user (clearing old stale hardcoded IPs).
+ * 3. On Physical Mobile Devices in Expo Go: dynamically extracts the computer's current LAN IP from Constants.expoConfig?.hostUri.
+ * 4. Explicit environment variable EXPO_PUBLIC_API_URL (if not the stale default).
+ * 5. Android Emulator loopback fallback (10.0.2.2:4000).
+ * 6. Default fallback: http://localhost:4000.
  */
 export function getApiUrl(): string {
-  // 1. Manually saved custom endpoint by user
+  // 1. Web browser environment: ALWAYS use the active web hostname (e.g. localhost or current PC LAN IP)
+  if (Platform.OS === "web" || (typeof window !== "undefined" && window.location)) {
+    const hostname = (typeof window !== "undefined" && window.location?.hostname) || "localhost";
+    return `http://${hostname}:4000`;
+  }
+
+  // 2. Manually saved custom endpoint by user
   const custom = storage.getItem("workmate_api_endpoint");
   if (custom && custom.trim()) {
-    return custom.trim().replace(/\/$/, "");
-  }
-
-  // 2. Explicit environment variable
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, "");
-  }
-
-  // 3. Web browser environment
-  if (Platform.OS === "web") {
-    if (typeof window !== "undefined" && window.location) {
-      const hostname = window.location.hostname || "localhost";
-      return `http://${hostname}:4000`;
+    const trimmed = custom.trim().replace(/\/$/, "");
+    // Ignore obsolete stale hardcoded IP from previous sessions
+    if (trimmed !== "http://192.168.137.200:4000") {
+      return trimmed;
     }
-    return "http://localhost:4000";
   }
 
-  // 4. Physical Android / iOS device running Expo Go:
-  // In Expo Go, hostUri contains the IP of the machine hosting Metro bundler (e.g. 192.168.137.200:8081)
+  // 3. Physical Android / iOS device running Expo Go:
+  // Metro bundler dynamically knows the computer's current Wi-Fi IP every morning!
   const hostUri =
     Constants.expoConfig?.hostUri ||
     (Constants as any).manifest2?.extra?.expoClient?.hostUri ||
@@ -45,8 +42,21 @@ export function getApiUrl(): string {
     }
   }
 
-  // 5. Default LAN Wi-Fi IP for this machine
-  return "http://192.168.137.200:4000";
+  // 4. Explicit environment variable (if set and not the stale IP)
+  if (process.env.EXPO_PUBLIC_API_URL && process.env.EXPO_PUBLIC_API_URL.trim()) {
+    const envUrl = process.env.EXPO_PUBLIC_API_URL.trim().replace(/\/$/, "");
+    if (envUrl !== "http://192.168.137.200:4000") {
+      return envUrl;
+    }
+  }
+
+  // 5. Android Emulator loopback
+  if (Platform.OS === "android") {
+    return "http://10.0.2.2:4000";
+  }
+
+  // 6. Universal default fallback
+  return "http://localhost:4000";
 }
 
 export function saveCustomApiUrl(url: string): void {

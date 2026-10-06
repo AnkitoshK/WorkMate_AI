@@ -47,3 +47,9 @@ tmp/
 temp/
 .neon
 *.tsbuildinfo
+# Large Media (attached via GitHub Releases)
+*.mp4
+*.mkv
+*.mov
+
+~$*

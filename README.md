@@ -81,24 +81,46 @@
 
 ---
 
-## 💻 Quick Start & Evaluation Guide
+---
 
-### 1. Start API Server:
-```bash
-cd apps/api
-npm run start
-# Listens on http://localhost:4000
-```
+## 💻 Quick Start Guide
 
-### 2. Start Web Dashboard:
+### ⚡ 1-Click Launch (All 3 Services)
+Double-click `start-workmate.bat` or run:
 ```bash
-cd apps/web
-npm run start
-# Available at http://localhost:3000
+pnpm dev:all
+# or: pnpm start
 ```
+This automatically launches:
+1. **Express API Server**: [http://localhost:4000](http://localhost:4000)
+2. **Next.js Web Portal**: [http://localhost:3000](http://localhost:3000)
+3. **Expo Mobile Metro**: [http://localhost:8081](http://localhost:8081)
 
-### 3. Start Mobile App (Optional):
-```bash
-cd apps/mobile
-npm run start
-```
+---
+
+## 📚 Project Documentation & Video Demonstration
+
+All detailed manuals, architectural diagrams, process flows, and video walkthroughs are included in the repository:
+
+### 🎬 Video Walkthrough
+- **ITSM Operations Demo**: Available under [GitHub Releases](https://github.com/AnkitoshK/WorkMate_AI/releases) as `WorkMate_AI_ITSM_Operations_Demo.mp4`. Covers real-time incident triage, ticket resolution, and dispatch operations.
+
+### 📖 Master Documentation & User Guides
+- [`docs/COMPREHENSIVE_OPERATIONS_MANUAL.md`](docs/COMPREHENSIVE_OPERATIONS_MANUAL.md) — Comprehensive operations manual.
+- [`docs/WORKMATE_AI_CODE_AND_PAGE_ARCHITECTURE_GUIDE.md`](docs/WORKMATE_AI_CODE_AND_PAGE_ARCHITECTURE_GUIDE.md) — Code-by-code & page-by-page architecture guide.
+- [`docs/EASY_UNDERSTANDING_GUIDE.md`](docs/EASY_UNDERSTANDING_GUIDE.md) — Plain English high-level guide.
+- [`docs/full_project_guide.md`](docs/full_project_guide.md) — End-to-end full project breakdown.
+- [`docs/user_manual_and_system_guide.md`](docs/user_manual_and_system_guide.md) — User manual & system guide.
+
+### 📑 Microsoft Word Documentation (.docx)
+- `docs/WorkMate_AI_Master_Project_Documentation.docx`
+- `docs/WorkMate_AI_Complete_Operations_Manual.docx`
+- `docs/WorkMate_AI_Deep_Dive_Learning_Guide.docx`
+- `docs/WorkMate_AI_Code_And_Page_Architecture_Guide.docx`
+- `docs/WorkMate_AI_Process Flow.docx`
+- `docs/WorkMate_AI_Tech_Stack.docx`
+- `docs/WorkMate_AI_Guide Part 0.docx`
+- `docs/WorkMate_AI_Part 1.docx`
+- `docs/WorkMate_AI_Part 2.docx`
+- `docs/WorkMate_AI_User_Manual Part 3.docx`
+- `docs/WorkMate_AI_Final Part.docx`

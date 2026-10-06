@@ -186,7 +186,11 @@ export default function WorkMateMobileApp() {
       const rawMsg = err?.message || "Connection refused";
       if (rawMsg.includes("127.0.0.1") || rawMsg.includes("localhost") || rawMsg.includes("ConnectException")) {
         setErrorMsg(
-          `Android devices cannot reach 'localhost'. Tap 'Server IP' to connect to your computer on LAN (http://192.168.137.200:4000). Current: ${activeEndpoint}`
+          `Physical phones cannot reach 'localhost'. Tap 'Server IP' to connect via your computer's Wi-Fi IP (detected: ${activeEndpoint})`
+        );
+      } else if (rawMsg.includes("Failed to fetch") || rawMsg.includes("Network request failed") || rawMsg.includes("Connection refused")) {
+        setErrorMsg(
+          `Backend server offline or unreachable at ${activeEndpoint}. Run 'pnpm dev' or 'pnpm dev:api' to start it.`
         );
       } else {
         setErrorMsg(`${rawMsg} (Server: ${activeEndpoint})`);
@@ -219,9 +223,11 @@ export default function WorkMateMobileApp() {
   };
 
   const handleResetServerUrl = () => {
-    const defaultUrl = "http://192.168.137.200:4000";
+    saveCustomApiUrl(""); // Clear manual override so it uses dynamic auto-detection
+    const defaultUrl = getApiUrl();
     setServerUrlInput(defaultUrl);
-    saveCustomApiUrl(defaultUrl);
+    setTestStatus({ testing: false, result: `Reset to auto-detected endpoint: ${defaultUrl}`, ok: true });
+    loadData();
   };
 
   // 2. Authentication Actions
@@ -1479,7 +1485,7 @@ export default function WorkMateMobileApp() {
               <Text style={styles.inputLabel}>Backend API Endpoint URL *</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="http://192.168.137.200:4000"
+                placeholder={getApiUrl()}
                 placeholderTextColor="#64748b"
                 value={serverUrlInput}
                 onChangeText={setServerUrlInput}
@@ -1493,7 +1499,7 @@ export default function WorkMateMobileApp() {
                   onPress={handleResetServerUrl}
                 >
                   <Text style={{ color: "#38bdf8", fontSize: 11, fontWeight: "600" }}>
-                    ↺ Set to LAN IP (192.168.137.200:4000)
+                    ↺ Reset to Auto-Detected IP
                   </Text>
                 </TouchableOpacity>
 
