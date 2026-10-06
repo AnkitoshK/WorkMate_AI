@@ -9,7 +9,6 @@ import {
   TextInput,
   ActivityIndicator,
   Modal,
-  Platform,
   Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -119,13 +118,13 @@ export default function WorkMateMobileApp() {
   // 1. Initial Data Fetch & Session Restoration
   const loadData = useCallback(async () => {
     try {
-      setErrorMsg("");
       const [uList, iList, tList] = await Promise.all([
         fetchUsers(),
         fetchIssues(),
         fetchTasks(),
       ]);
 
+      setErrorMsg("");
       setUsers(uList);
       setIssues(iList);
       setTasks(tList);
@@ -157,12 +156,13 @@ export default function WorkMateMobileApp() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadData();
   }, [loadData]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadData();
+    void loadData();
   };
 
   // 2. Authentication Handlers
@@ -267,6 +267,7 @@ export default function WorkMateMobileApp() {
       const updated = await updateUser(activeUser.id, {
         name: profileName.trim(),
         email: profileEmail.trim() || undefined,
+        department: profileDept.trim() || undefined,
         avatar: profileAvatar.trim() || undefined,
       });
 
@@ -725,10 +726,7 @@ export default function WorkMateMobileApp() {
           {/* Profile & Switcher avatar button */}
           <TouchableOpacity
             style={styles.profileButton}
-            onPress={() => {
-              setProfileModalTab("profile");
-              setIsProfileModalOpen(true);
-            }}
+            onPress={() => handleOpenEditProfile()}
           >
             <View style={styles.avatarCircle}>
               {activeUser?.avatar ? (
@@ -987,7 +985,7 @@ export default function WorkMateMobileApp() {
               <View style={styles.emptyState}>
                 <Text style={styles.emptyIcon}>✅</Text>
                 <Text style={styles.emptyTitle}>All tasks completed</Text>
-                <Text style={styles.emptySubtitle}>Tap '+ New Task' to add items to your work list.</Text>
+                <Text style={styles.emptySubtitle}>Tap &apos;+ New Task&apos; to add items to your work list.</Text>
               </View>
             ) : (
               filteredTasks.map((task) => {
@@ -1346,6 +1344,13 @@ export default function WorkMateMobileApp() {
                   autoCapitalize="none"
                 />
 
+                <Text style={styles.inputLabel}>Department</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={profileDept}
+                  onChangeText={setProfileDept}
+                />
+
                 <TouchableOpacity
                   style={[styles.primaryBtn, { marginTop: 8 }]}
                   onPress={handleSaveProfile}
@@ -1423,6 +1428,25 @@ export default function WorkMateMobileApp() {
               value={taskCategory}
               onChangeText={setTaskCategory}
             />
+
+            <Text style={styles.inputLabel}>Priority Level</Text>
+            <View style={styles.chipRow}>
+              {[
+                { val: 1, label: "High (1)" },
+                { val: 2, label: "Medium (2)" },
+                { val: 3, label: "Low (3)" },
+              ].map((p) => (
+                <TouchableOpacity
+                  key={p.val}
+                  style={[styles.chip, taskPriority === p.val && styles.chipActive]}
+                  onPress={() => setTaskPriority(p.val)}
+                >
+                  <Text style={[styles.chipText, taskPriority === p.val && styles.chipTextActive]}>
+                    {p.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <Text style={styles.inputLabel}>Link to Ticket (Optional)</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>

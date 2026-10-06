@@ -160,10 +160,50 @@ const getServiceIcon = (slugOrType?: string | null) => {
   return "📦";
 };
 
+export interface ActionToast {
+  id: string;
+  type: "success" | "info" | "warning" | "error";
+  title: string;
+  message: string;
+  actionKind?: "RAISE" | "CLOSE" | "RESOLVE" | "REASSIGN" | "LOGIN" | "ATTENDANCE" | "TASK" | "GENERAL";
+  ticketNumber?: number;
+  time: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  userId?: string | null;
+  userName: string;
+  userEmail: string;
+  role: string;
+  department?: string | null;
+  clientType: string;
+  action: string;
+  status: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  timestamp: string;
+}
+
 export default function WorkMateEnterpriseApp() {
   // Navigation
-  const [activeTab, setActiveTab] = useState<"dashboard" | "tickets" | "services" | "team" | "tasks" | "ai">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "tickets" | "closed-history" | "attendance" | "services" | "team" | "tasks" | "ai">("dashboard");
   const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban");
+
+  // Interactive Action Notifications (Toasts / Popups)
+  const [toasts, setToasts] = useState<ActionToast[]>([]);
+
+  // Attendance & Login Tracking
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceRecord[]>([]);
+  const [attendanceStats, setAttendanceStats] = useState({ totalCount: 0, todayCount: 0, uniqueStaffToday: 0 });
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceSearch, setAttendanceSearch] = useState("");
+  const [attendanceRoleFilter, setAttendanceRoleFilter] = useState("ALL");
+
+  // Closed Tickets History Filters
+  const [closedSearchQuery, setClosedSearchQuery] = useState("");
+  const [closedCategoryFilter, setClosedCategoryFilter] = useState("ALL");
+  const [closedDepartmentFilter, setClosedDepartmentFilter] = useState("ALL");
 
   // Core Data
   const [users, setUsers] = useState<User[]>([]);
@@ -268,6 +308,181 @@ export default function WorkMateEnterpriseApp() {
 
   const [switchNotification, setSwitchNotification] = useState<{ name: string; role: Role; department?: string | null } | null>(null);
 
+  // Action Toast Notification Trigger
+  const triggerToast = useCallback(
+    (
+      type: "success" | "info" | "warning" | "error",
+      title: string,
+      message: string,
+      actionKind: "RAISE" | "CLOSE" | "RESOLVE" | "REASSIGN" | "LOGIN" | "ATTENDANCE" | "TASK" | "GENERAL" = "GENERAL",
+      ticketNumber?: number
+    ) => {
+      const id = "toast_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
+      const now = new Date();
+      const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+      setToasts((prev) => [{ id, type, title, message, actionKind, ticketNumber, time }, ...prev.slice(0, 4)]);
+
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 5500);
+    },
+    []
+  );
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // Fetch Attendance Logs
+  const fetchAttendanceLogs = useCallback(async () => {
+    try {
+      setAttendanceLoading(true);
+      const res = await fetch(`${API_BASE}/api/attendance`);
+      if (res.ok) {
+        const data = await res.json();
+        setAttendanceLogs(data.logs || []);
+        setAttendanceStats({
+          totalCount: data.totalCount || 0,
+          todayCount: data.todayCount || 0,
+          uniqueStaffToday: data.uniqueStaffToday || 0,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to fetch attendance:", err);
+    } finally {
+      setAttendanceLoading(false);
+    }
+  }, []);
+
+  // Record Attendance Stamp
+  const recordAttendance = useCallback(
+    async (user: User, action = "LOGIN") => {
+      try {
+        const res = await fetch(`${API_BASE}/api/attendance`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: user.id,
+            userName: user.name,
+            userEmail: user.email,
+            role: user.role,
+            department: user.department || "Operations",
+            clientType: "WEB_PORTAL",
+            action,
+            status: "PRESENT",
+          }),
+        });
+        if (res.ok) {
+          void fetchAttendanceLogs();
+        }
+      } catch (err) {
+        console.error("Attendance recording notice:", err);
+      }
+    },
+    [fetchAttendanceLogs]
+  );
+
+  // Export Attendance CSV Report
+  const handleExportAttendanceCsv = () => {
+    if (attendanceLogs.length === 0) {
+      triggerToast("warning", "No Attendance Records", "There are no attendance records to export.", "ATTENDANCE");
+      return;
+    }
+
+    const headers = ["Log ID", "Date", "Time", "Staff Member", "Email", "Role", "Department", "Portal", "Action", "Status", "IP Address"];
+    const rows = attendanceLogs.map((log) => {
+      const d = new Date(log.timestamp);
+      return [
+        `"${log.id}"`,
+        `"${d.toLocaleDateString()}"`,
+        `"${d.toLocaleTimeString()}"`,
+        `"${log.userName.replace(/"/g, '""')}"`,
+        `"${log.userEmail.replace(/"/g, '""')}"`,
+        `"${log.role}"`,
+        `"${(log.department || "Operations").replace(/"/g, '""')}"`,
+        `"${log.clientType}"`,
+        `"${log.action}"`,
+        `"${log.status}"`,
+        `"${log.ipAddress || "127.0.0.1"}"`,
+      ].join(",");
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `WorkMate_Attendance_Report_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    triggerToast("success", "Attendance Report Exported", `Downloaded attendance log containing ${attendanceLogs.length} entries.`, "ATTENDANCE");
+  };
+
+  // Export Closed Tickets CSV Report
+  const handleExportClosedTicketsCsv = () => {
+    const closed = issues.filter((i) => i.status === "CLOSED");
+    if (closed.length === 0) {
+      triggerToast("warning", "No Closed Tickets", "There are currently no closed tickets to export.", "CLOSE");
+      return;
+    }
+
+    const headers = [
+      "Ticket Number",
+      "Title",
+      "Category",
+      "Priority",
+      "Department",
+      "Reporter",
+      "Reporter Email",
+      "Resolver / Assignee",
+      "Created At",
+      "Closed At",
+      "Turnaround Duration",
+      "Resolution Notes",
+      "AI Diagnosis Root Cause",
+      "Affected Asset",
+    ];
+
+    const rows = closed.map((iss) => {
+      const created = new Date(iss.createdAt);
+      const closedDate = iss.resolvedAt ? new Date(iss.resolvedAt) : new Date(iss.updatedAt);
+      const diffMs = Math.max(0, closedDate.getTime() - created.getTime());
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      const duration = `${diffHours}h ${diffMins}m`;
+
+      return [
+        `"#TIK-${String(iss.ticketNumber).padStart(3, "0")}"`,
+        `"${iss.title.replace(/"/g, '""')}"`,
+        `"${iss.category}"`,
+        `"${iss.priority}"`,
+        `"${(iss.department || "Operations").replace(/"/g, '""')}"`,
+        `"${(iss.reporter?.name || "Unknown").replace(/"/g, '""')}"`,
+        `"${(iss.reporter?.email || "").replace(/"/g, '""')}"`,
+        `"${(iss.assignee?.name || "Unassigned / Lead").replace(/"/g, '""')}"`,
+        `"${created.toLocaleString()}"`,
+        `"${closedDate.toLocaleString()}"`,
+        `"${duration}"`,
+        `"${(iss.resolutionNotes || "Resolved per standard procedure").replace(/"/g, '""')}"`,
+        `"${(iss.aiRootCause || "N/A").replace(/"/g, '""')}"`,
+        `"${(iss.serviceAsset?.name || "Unlinked").replace(/"/g, '""')}"`,
+      ].join(",");
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `WorkMate_Closed_Tickets_History_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    triggerToast("success", "Closed Tickets Exported", `Downloaded closed tickets history containing ${closed.length} records.`, "CLOSE");
+  };
+
   // Service / Project Selection for Ticket
   const handleSelectServiceForTicket = useCallback((serviceId: string) => {
     if (!serviceId) {
@@ -305,7 +520,16 @@ export default function WorkMateEnterpriseApp() {
     setTimeout(() => {
       setSwitchNotification(null);
     }, 7000);
-  }, []);
+
+    // Record attendance login audit
+    void recordAttendance(user, "SESSION_SWITCH");
+    triggerToast(
+      "success",
+      `Shift Attendance Logged: ${user.name}`,
+      `Signed in as ${user.name} (${user.role} · ${user.department || "Operations"}). Shift presence timestamp recorded.`,
+      "ATTENDANCE"
+    );
+  }, [recordAttendance, triggerToast]);
 
   // Session: Email + Password Login (Production Real-Time Authentication)
   const handleEmailLogin = async (e: FormEvent) => {
@@ -353,6 +577,14 @@ export default function WorkMateEnterpriseApp() {
       localStorage.removeItem("workmate_active_user_id");
       localStorage.removeItem("workmate_active_user_email");
     }
+    if (activeUser) {
+      triggerToast(
+        "info",
+        "Session Concluded",
+        `Logged out of ${activeUser.name}'s session. Shift status archived.`,
+        "ATTENDANCE"
+      );
+    }
     setActiveUser(null);
     setSwitchNotification(null);
     setLoginError("");
@@ -360,7 +592,7 @@ export default function WorkMateEnterpriseApp() {
     setLoginPassword("");
     setAuthTab("login");
     setIsAuthModalOpen(true);
-  }, []);
+  }, [activeUser, triggerToast]);
 
   // 1. Initial Data Fetch
   const refreshAllData = useCallback(async () => {
@@ -405,13 +637,14 @@ export default function WorkMateEnterpriseApp() {
       setTasks(Array.isArray(tRes) ? tRes : []);
       setStats(sRes);
       setServices(Array.isArray(servRes) ? servRes : []);
+      void fetchAttendanceLogs();
       setErrorMessage("");
     } catch (err) {
       setErrorMessage("Could not connect to WorkMate API at " + API_BASE + ". Please ensure API server is listening.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchAttendanceLogs]);
 
   useEffect(() => {
     void refreshAllData();
@@ -650,6 +883,15 @@ export default function WorkMateEnterpriseApp() {
         }
         throw new Error(message);
       }
+
+      const createdTicket = await res.json();
+      triggerToast(
+        "success",
+        `Ticket Raised: #TIK-${String(createdTicket.ticketNumber).padStart(3, "0")}`,
+        `"${createdTicket.title}" was registered and queued for ${createdTicket.department || "Operations"} squad.`,
+        "RAISE",
+        createdTicket.ticketNumber
+      );
 
       setIsNewTicketOpen(false);
       setTicketForm({
@@ -920,6 +1162,41 @@ export default function WorkMateEnterpriseApp() {
         const updated = await res.json();
         if (selectedIssue?.id === issueId) setSelectedIssue(updated);
         await refreshAllData();
+
+        const ticketNumStr = `#TIK-${String(updated.ticketNumber).padStart(3, "0")}`;
+        if (status === "CLOSED") {
+          triggerToast(
+            "info",
+            `Ticket ${ticketNumStr} Closed & Archived`,
+            `"${updated.title}" has been closed and safely moved to the Closed History Archive.`,
+            "CLOSE",
+            updated.ticketNumber
+          );
+        } else if (status === "RESOLVED") {
+          triggerToast(
+            "success",
+            `Ticket ${ticketNumStr} Resolved`,
+            `"${updated.title}" marked as RESOLVED. Pending manager review.`,
+            "RESOLVE",
+            updated.ticketNumber
+          );
+        } else if (status === "IN_PROGRESS") {
+          triggerToast(
+            "info",
+            `Ticket ${ticketNumStr} In Progress`,
+            `Work has commenced on "${updated.title}".`,
+            "GENERAL",
+            updated.ticketNumber
+          );
+        } else {
+          triggerToast(
+            "info",
+            `Ticket ${ticketNumStr} Status Updated`,
+            `Status updated to ${status}.`,
+            "GENERAL",
+            updated.ticketNumber
+          );
+        }
       }
     } catch (err) {
       console.error(err);
@@ -946,6 +1223,17 @@ export default function WorkMateEnterpriseApp() {
         const updated = await res.json();
         if (selectedIssue?.id === issueId) setSelectedIssue(updated);
         await refreshAllData();
+
+        const ticketNumStr = `#TIK-${String(updated.ticketNumber).padStart(3, "0")}`;
+        const targetUser = users.find((u) => u.id === assigneeId);
+        const assigneeLabel = targetUser ? `${targetUser.name} (${targetUser.role})` : "Unassigned Queue";
+        triggerToast(
+          "info",
+          `Ticket ${ticketNumStr} Reassigned`,
+          `Assigned to ${assigneeLabel}.`,
+          "REASSIGN",
+          updated.ticketNumber
+        );
       }
     } catch (err) {
       console.error(err);
@@ -979,6 +1267,13 @@ export default function WorkMateEnterpriseApp() {
         setNewCommentText("");
         await openTicketDetail(selectedIssue.id);
         await refreshAllData();
+        triggerToast(
+          "info",
+          "Comment Posted",
+          "Update posted to the ticket timeline.",
+          "GENERAL",
+          selectedIssue.ticketNumber
+        );
       }
     } catch (err) {
       console.error(err);
@@ -1014,6 +1309,12 @@ export default function WorkMateEnterpriseApp() {
         body: JSON.stringify({ status: nextStatus }),
       });
       await refreshAllData();
+      triggerToast(
+        "success",
+        "Task Updated",
+        `Task "${task.title}" marked as ${nextStatus}.`,
+        "TASK"
+      );
     } catch (err) {
       console.error(err);
     }
@@ -1045,6 +1346,12 @@ export default function WorkMateEnterpriseApp() {
         }),
       });
       setIsNewTaskOpen(false);
+      triggerToast(
+        "success",
+        "Task Created",
+        `Task "${taskForm.title}" added to active sprint list.`,
+        "TASK"
+      );
       setTaskForm({ title: "", description: "", priority: 2, category: "Maintenance", issueId: "", dueDate: "" });
       await refreshAllData();
     } catch (err: any) {
@@ -1405,6 +1712,20 @@ export default function WorkMateEnterpriseApp() {
         <button className={`nav-tab-btn ${activeTab === "tickets" ? "active" : ""}`} onClick={() => setActiveTab("tickets")}>
           <span>🎫</span> Tickets
           <span className="tab-badge">{isSuperAdmin ? issues.length : filteredIssues.length}</span>
+        </button>
+        <button className={`nav-tab-btn ${activeTab === "closed-history" ? "active" : ""}`} onClick={() => setActiveTab("closed-history")}>
+          <span>📁</span> Closed History
+          <span className="tab-badge">{issues.filter((i) => i.status === "CLOSED").length}</span>
+        </button>
+        <button 
+          className={`nav-tab-btn ${activeTab === "attendance" ? "active" : ""}`} 
+          onClick={() => {
+            setActiveTab("attendance");
+            void fetchAttendanceLogs();
+          }}
+        >
+          <span>⏱️</span> Attendance & Logins
+          {attendanceStats.todayCount > 0 && <span className="tab-badge">{attendanceStats.todayCount}</span>}
         </button>
         <button className={`nav-tab-btn ${activeTab === "services" ? "active" : ""}`} onClick={() => setActiveTab("services")}>
           <span>🌐</span> Services & Apps ({services.length})
@@ -1894,6 +2215,594 @@ export default function WorkMateEnterpriseApp() {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: CLOSED TICKETS HISTORY & AUDIT ARCHIVE */}
+      {activeTab === "closed-history" && (() => {
+        const closedIssuesList = issues.filter((iss) => iss.status === "CLOSED");
+        const filteredClosed = closedIssuesList.filter((iss) => {
+          const q = closedSearchQuery.toLowerCase();
+          const matchesSearch =
+            !q ||
+            iss.title.toLowerCase().includes(q) ||
+            iss.description.toLowerCase().includes(q) ||
+            String(iss.ticketNumber).includes(q) ||
+            (iss.assignee?.name && iss.assignee.name.toLowerCase().includes(q)) ||
+            (iss.reporter?.name && iss.reporter.name.toLowerCase().includes(q)) ||
+            (iss.resolutionNotes && iss.resolutionNotes.toLowerCase().includes(q)) ||
+            (iss.aiRootCause && iss.aiRootCause.toLowerCase().includes(q)) ||
+            (iss.serviceAsset?.name && iss.serviceAsset.name.toLowerCase().includes(q));
+
+          const matchesCat = closedCategoryFilter === "ALL" || iss.category === closedCategoryFilter;
+          const matchesDept = closedDepartmentFilter === "ALL" || iss.department === closedDepartmentFilter;
+          return matchesSearch && matchesCat && matchesDept;
+        });
+
+        // Compute average turnaround in hours
+        let totalTurnaroundMs = 0;
+        let countedTurnarounds = 0;
+        closedIssuesList.forEach((iss) => {
+          const created = new Date(iss.createdAt).getTime();
+          const closedAt = (iss.resolvedAt ? new Date(iss.resolvedAt) : new Date(iss.updatedAt)).getTime();
+          if (closedAt > created) {
+            totalTurnaroundMs += closedAt - created;
+            countedTurnarounds++;
+          }
+        });
+        const avgTurnaroundHours = countedTurnarounds > 0 ? (totalTurnaroundMs / (countedTurnarounds * 3600000)).toFixed(1) : "0.0";
+
+        return (
+          <div>
+            {/* Header & Export Bar */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <h2 style={{ fontSize: "20px", fontWeight: "800", color: "#fff" }}>Closed Tickets Archive & Audit History</h2>
+                  <span className="closed-history-badge">
+                    <span>📁</span> {closedIssuesList.length} Archived
+                  </span>
+                </div>
+                <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
+                  Permanent historical audit log of all completed and closed incidents with resolution notes, turnaround duration, and root-cause verification.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  className="export-btn"
+                  onClick={handleExportClosedTicketsCsv}
+                  title="Export closed tickets and audit trail to CSV file"
+                >
+                  <span>📥</span> Export Closed Tickets (CSV)
+                </button>
+              </div>
+            </div>
+
+            {/* Metric KPI Summary */}
+            <div className="attendance-summary-grid">
+              <div className="attendance-metric-card">
+                <div className="attendance-metric-icon" style={{ background: "rgba(59, 130, 246, 0.15)", color: "#60a5fa" }}>
+                  📁
+                </div>
+                <div>
+                  <div className="attendance-metric-val">{closedIssuesList.length}</div>
+                  <div className="attendance-metric-label">Total Closed Incidents</div>
+                </div>
+              </div>
+
+              <div className="attendance-metric-card">
+                <div className="attendance-metric-icon" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#34d399" }}>
+                  ⏱️
+                </div>
+                <div>
+                  <div className="attendance-metric-val">{avgTurnaroundHours}h</div>
+                  <div className="attendance-metric-label">Avg. Resolution Turnaround</div>
+                </div>
+              </div>
+
+              <div className="attendance-metric-card">
+                <div className="attendance-metric-icon" style={{ background: "rgba(139, 92, 246, 0.15)", color: "#a78bfa" }}>
+                  📊
+                </div>
+                <div>
+                  <div className="attendance-metric-val">
+                    {issues.length > 0 ? `${Math.round((closedIssuesList.length / issues.length) * 100)}%` : "0%"}
+                  </div>
+                  <div className="attendance-metric-label">Fleet Closure Rate</div>
+                </div>
+              </div>
+
+              <div className="attendance-metric-card">
+                <div className="attendance-metric-icon" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#fbbf24" }}>
+                  🛡️
+                </div>
+                <div>
+                  <div className="attendance-metric-val">Audit Compliant</div>
+                  <div className="attendance-metric-label">Immutable Log Trail</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="filter-bar" style={{ marginBottom: "18px" }}>
+              <div className="search-box">
+                <span className="search-icon">🔍</span>
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder="Search closed ticket #, keyword, resolver, resolution notes..."
+                  value={closedSearchQuery}
+                  onChange={(e) => setClosedSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <select
+                className="filter-select"
+                value={closedDepartmentFilter}
+                onChange={(e) => setClosedDepartmentFilter(e.target.value)}
+              >
+                <option value="ALL">All Departments</option>
+                <option value="Backend & Core APIs">Backend & Core APIs</option>
+                <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
+                <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
+                <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
+                <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
+                <option value="Operations">Operations</option>
+              </select>
+
+              <select
+                className="filter-select"
+                value={closedCategoryFilter}
+                onChange={(e) => setClosedCategoryFilter(e.target.value)}
+              >
+                <option value="ALL">All Categories</option>
+                <option value="SOFTWARE">Software</option>
+                <option value="HARDWARE">Hardware</option>
+                <option value="NETWORK">Network</option>
+                <option value="FACILITY">Facility</option>
+                <option value="SAFETY">Safety</option>
+                <option value="OTHER">Other</option>
+              </select>
+
+              {(closedSearchQuery || closedDepartmentFilter !== "ALL" || closedCategoryFilter !== "ALL") && (
+                <button
+                  className="btn btn-secondary"
+                  style={{ height: "36px", padding: "0 12px", fontSize: "12px" }}
+                  onClick={() => {
+                    setClosedSearchQuery("");
+                    setClosedDepartmentFilter("ALL");
+                    setClosedCategoryFilter("ALL");
+                  }}
+                >
+                  Clear Filters
+                </button>
+              )}
+            </div>
+
+            {/* Audit History Table */}
+            {filteredClosed.length === 0 ? (
+              <div style={{
+                background: "var(--bg-card)",
+                border: "1px dashed var(--border-subtle)",
+                borderRadius: "12px",
+                padding: "60px 24px",
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize: "40px", marginBottom: "12px" }}>📁</div>
+                <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#fff", marginBottom: "6px" }}>
+                  {closedIssuesList.length === 0 ? "No Closed Tickets Yet" : "No Matching Closed Tickets Found"}
+                </h3>
+                <p style={{ color: "var(--text-muted)", fontSize: "13px", maxWidth: "460px", margin: "0 auto" }}>
+                  {closedIssuesList.length === 0
+                    ? "When tickets are verified and marked as CLOSED, they automatically appear in this archive with full resolution notes and audit history."
+                    : "Try adjusting your search criteria or clearing active filters to see all archived records."}
+                </p>
+              </div>
+            ) : (
+              <div className="table-container">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Ticket ID</th>
+                      <th>Incident Title</th>
+                      <th>App / Service</th>
+                      <th>Category</th>
+                      <th>Reported By</th>
+                      <th>Closed / Resolved By</th>
+                      <th>Turnaround</th>
+                      <th>Resolution Notes & Root Cause</th>
+                      <th style={{ textAlign: "right" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredClosed.map((iss) => {
+                      const createdDate = new Date(iss.createdAt);
+                      const closedDate = iss.resolvedAt ? new Date(iss.resolvedAt) : new Date(iss.updatedAt);
+                      const diffMs = Math.max(0, closedDate.getTime() - createdDate.getTime());
+                      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                      const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                      const durationStr = diffHours > 0 ? `${diffHours}h ${diffMins}m` : `${diffMins}m`;
+
+                      return (
+                        <tr key={iss.id} style={{ cursor: "pointer" }} onClick={() => openTicketDetail(iss.id)}>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <span style={{ fontFamily: "JetBrains Mono", fontWeight: "700", color: "#60a5fa" }}>
+                                #TIK-{String(iss.ticketNumber).padStart(3, "0")}
+                              </span>
+                              <span className="closed-history-badge" style={{ fontSize: "10px" }}>CLOSED</span>
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: "700", color: "#f8fafc", maxWidth: "260px" }}>{iss.title}</div>
+                            <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                              Logged: {createdDate.toLocaleDateString()} {createdDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          </td>
+                          <td>
+                            <span style={{ fontWeight: "600", color: "#e2e8f0" }}>{iss.serviceAsset?.name || "General"}</span>
+                            <div style={{ fontSize: "10.5px", color: "var(--text-dim)" }}>{iss.department || "Operations"}</div>
+                          </td>
+                          <td>
+                            <span className="badge badge-cat">{iss.category}</span>
+                          </td>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              {iss.reporter?.avatar ? (
+                                <img src={iss.reporter.avatar} alt="" style={{ width: "20px", height: "20px", borderRadius: "50%" }} />
+                              ) : (
+                                <div style={{ width: "20px", height: "20px", borderRadius: "50%", background: "#3b82f6", fontSize: "10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                  {iss.reporter?.name?.charAt(0) || "U"}
+                                </div>
+                              )}
+                              <span style={{ fontSize: "12px" }}>{iss.reporter?.name || "User"}</span>
+                            </div>
+                          </td>
+                          <td>
+                            {iss.assignee ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                {iss.assignee.avatar ? (
+                                  <img src={iss.assignee.avatar} alt="" style={{ width: "20px", height: "20px", borderRadius: "50%" }} />
+                                ) : (
+                                  <div style={{ width: "20px", height: "20px", borderRadius: "50%", background: "#10b981", fontSize: "10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    {iss.assignee.name.charAt(0)}
+                                  </div>
+                                )}
+                                <div>
+                                  <div style={{ fontSize: "12px", fontWeight: "600" }}>{iss.assignee.name}</div>
+                                  <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>{iss.assignee.role}</div>
+                                </div>
+                              </div>
+                            ) : (
+                              <span style={{ color: "#94a3b8", fontSize: "12px" }}>Lead / Operations</span>
+                            )}
+                          </td>
+                          <td>
+                            <span className="resolution-duration-tag">
+                              <span>⏱️</span> {durationStr}
+                            </span>
+                          </td>
+                          <td style={{ maxWidth: "280px" }}>
+                            {iss.resolutionNotes ? (
+                              <div style={{ fontSize: "11.5px", color: "#cbd5e1", lineHeight: "1.4" }}>
+                                {iss.resolutionNotes.length > 80 ? iss.resolutionNotes.slice(0, 80) + "..." : iss.resolutionNotes}
+                              </div>
+                            ) : iss.aiRootCause ? (
+                              <div style={{ fontSize: "11px", color: "#d8b4fe" }}>
+                                <strong>Root Cause:</strong> {iss.aiRootCause.slice(0, 70)}...
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Resolution verified</span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
+                              <button
+                                className="btn btn-secondary"
+                                style={{ padding: "4px 8px", fontSize: "11px" }}
+                                onClick={() => openTicketDetail(iss.id)}
+                                title="Inspect full audit trail and resolution timeline"
+                              >
+                                View Log
+                              </button>
+                              {isSuperAdmin && (
+                                <button
+                                  className="btn btn-secondary"
+                                  style={{ padding: "4px 8px", fontSize: "11px", color: "#f59e0b" }}
+                                  onClick={() => handleUpdateStatus(iss.id, "OPEN")}
+                                  title="Reopen ticket if further audit or rework is needed"
+                                >
+                                  Reopen
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* TAB: STAFF ATTENDANCE & LOGIN TRACKING */}
+      {activeTab === "attendance" && (
+        <div>
+          {/* Header & Export Bar */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <h2 style={{ fontSize: "20px", fontWeight: "800", color: "#fff" }}>Staff Attendance & Login Audit</h2>
+                <span className="attendance-badge-present">
+                  <span className="attendance-dot"></span> Active Tracking
+                </span>
+              </div>
+              <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
+                Accurate login logs and shift presence tracking for operational attendance monitoring with one-click report export.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              {activeUser && (
+                <button
+                  className="btn btn-primary"
+                  style={{ height: "34px", padding: "0 12px", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}
+                  onClick={() => {
+                    void recordAttendance(activeUser, "SHIFT_CHECKIN");
+                    triggerToast("success", "Shift Attendance Logged", `Attendance check-in logged for ${activeUser.name}.`, "ATTENDANCE");
+                  }}
+                  title="Punch immediate attendance stamp"
+                >
+                  <span>⏱️</span> Log Attendance Punch
+                </button>
+              )}
+
+              <button
+                className="export-btn"
+                onClick={handleExportAttendanceCsv}
+                title="Export complete attendance records to CSV"
+              >
+                <span>📥</span> Export Attendance Report (CSV)
+              </button>
+
+              <button
+                className="btn btn-secondary"
+                style={{ height: "34px", padding: "0 10px", fontSize: "12px" }}
+                onClick={() => void fetchAttendanceLogs()}
+                title="Refresh attendance records"
+              >
+                <span>🔄</span> Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Metric Summary Grid */}
+          <div className="attendance-summary-grid">
+            <div className="attendance-metric-card">
+              <div className="attendance-metric-icon" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#34d399" }}>
+                ⏱️
+              </div>
+              <div>
+                <div className="attendance-metric-val">{attendanceStats.todayCount}</div>
+                <div className="attendance-metric-label">Today's Total Check-ins</div>
+              </div>
+            </div>
+
+            <div className="attendance-metric-card">
+              <div className="attendance-metric-icon" style={{ background: "rgba(37, 99, 235, 0.15)", color: "#60a5fa" }}>
+                👥
+              </div>
+              <div>
+                <div className="attendance-metric-val">{attendanceStats.uniqueStaffToday}</div>
+                <div className="attendance-metric-label">Unique Staff On-Duty Today</div>
+              </div>
+            </div>
+
+            <div className="attendance-metric-card">
+              <div className="attendance-metric-icon" style={{ background: "rgba(139, 92, 246, 0.15)", color: "#a78bfa" }}>
+                📜
+              </div>
+              <div>
+                <div className="attendance-metric-val">{attendanceStats.totalCount}</div>
+                <div className="attendance-metric-label">Total Historical Logs</div>
+              </div>
+            </div>
+
+            <div className="attendance-metric-card">
+              <div className="attendance-metric-icon" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#fbbf24" }}>
+                👤
+              </div>
+              <div>
+                <div className="attendance-metric-val" style={{ fontSize: "16px", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap", maxWidth: "160px" }}>
+                  {activeUser ? activeUser.name : "None"}
+                </div>
+                <div className="attendance-metric-label">
+                  {activeUser ? `Active (${activeUser.role})` : "Signed Out"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Search & Filter Controls */}
+          <div className="filter-bar" style={{ marginBottom: "18px" }}>
+            <div className="search-box">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search staff name, email, department, or client..."
+                value={attendanceSearch}
+                onChange={(e) => setAttendanceSearch(e.target.value)}
+              />
+            </div>
+
+            <select
+              className="filter-select"
+              value={attendanceRoleFilter}
+              onChange={(e) => setAttendanceRoleFilter(e.target.value)}
+            >
+              <option value="ALL">All Roles</option>
+              <option value="SUPER_ADMIN">Super Admin</option>
+              <option value="ADMIN">Admin</option>
+              <option value="MANAGER">Manager</option>
+              <option value="ENGINEER">Engineer</option>
+              <option value="USER">User</option>
+            </select>
+
+            {(attendanceSearch || attendanceRoleFilter !== "ALL") && (
+              <button
+                className="btn btn-secondary"
+                style={{ height: "36px", padding: "0 12px", fontSize: "12px" }}
+                onClick={() => {
+                  setAttendanceSearch("");
+                  setAttendanceRoleFilter("ALL");
+                }}
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+
+          {/* Attendance Records Table */}
+          {attendanceLoading && attendanceLogs.length === 0 ? (
+            <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+              Loading attendance audit logs...
+            </div>
+          ) : attendanceLogs.length === 0 ? (
+            <div style={{
+              background: "var(--bg-card)",
+              border: "1px dashed var(--border-subtle)",
+              borderRadius: "12px",
+              padding: "60px 24px",
+              textAlign: "center",
+            }}>
+              <div style={{ fontSize: "40px", marginBottom: "12px" }}>⏱️</div>
+              <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#fff", marginBottom: "6px" }}>
+                No Attendance Records Logged Yet
+              </h3>
+              <p style={{ color: "var(--text-muted)", fontSize: "13px", maxWidth: "460px", margin: "0 auto 16px" }}>
+                Attendance records are created automatically whenever a staff member signs in, switches accounts, or punches their attendance.
+              </p>
+              {activeUser && (
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    void recordAttendance(activeUser, "LOGIN");
+                    triggerToast("success", "Shift Attendance Recorded", `Attendance recorded for ${activeUser.name}.`, "ATTENDANCE");
+                  }}
+                >
+                  Log Your Attendance Now
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Staff Member</th>
+                    <th>Email Address</th>
+                    <th>Role & Squad</th>
+                    <th>Login Date & Time</th>
+                    <th>Access Portal</th>
+                    <th>Action</th>
+                    <th>Attendance Status</th>
+                    <th>IP / Client Network</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {attendanceLogs
+                    .filter((log) => {
+                      const q = attendanceSearch.toLowerCase();
+                      const matchesSearch =
+                        !q ||
+                        log.userName.toLowerCase().includes(q) ||
+                        log.userEmail.toLowerCase().includes(q) ||
+                        (log.department && log.department.toLowerCase().includes(q)) ||
+                        log.clientType.toLowerCase().includes(q);
+
+                      const matchesRole = attendanceRoleFilter === "ALL" || log.role === attendanceRoleFilter;
+                      return matchesSearch && matchesRole;
+                    })
+                    .map((log) => {
+                      const d = new Date(log.timestamp);
+                      const isToday = new Date().toDateString() === d.toDateString();
+
+                      return (
+                        <tr key={log.id}>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <div style={{
+                                width: "28px",
+                                height: "28px",
+                                borderRadius: "50%",
+                                background: "#2563eb",
+                                color: "#fff",
+                                fontSize: "12px",
+                                fontWeight: "700",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}>
+                                {log.userName.charAt(0)}
+                              </div>
+                              <span style={{ fontWeight: "700", color: "#f8fafc" }}>{log.userName}</span>
+                            </div>
+                          </td>
+                          <td style={{ color: "var(--text-muted)", fontSize: "12.5px" }}>{log.userEmail}</td>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <span className="badge badge-assigned" style={{ fontSize: "10.5px" }}>{log.role}</span>
+                              <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>{log.department || "Operations"}</span>
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: "600", color: isToday ? "#38bdf8" : "#cbd5e1", fontSize: "12.5px" }}>
+                              {d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
+                            </div>
+                            <div style={{ fontSize: "11px", color: "var(--text-dim)", fontFamily: "JetBrains Mono" }}>
+                              {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            </div>
+                          </td>
+                          <td>
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              fontSize: "11px",
+                              background: "rgba(255,255,255,0.05)",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              color: "#cbd5e1",
+                            }}>
+                              {log.clientType === "MOBILE_APP" ? "📱 Mobile App" : "🌐 Web Portal"}
+                            </span>
+                          </td>
+                          <td>
+                            <span style={{ fontSize: "11.5px", fontWeight: "600", color: "#94a3b8" }}>
+                              {log.action}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="attendance-badge-present">
+                              <span className="attendance-dot"></span>
+                              {log.status || "PRESENT"}
+                            </span>
+                          </td>
+                          <td style={{ fontFamily: "JetBrains Mono", fontSize: "11px", color: "var(--text-dim)" }}>
+                            {log.ipAddress || "127.0.0.1"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
@@ -3776,6 +4685,61 @@ export default function WorkMateEnterpriseApp() {
           </div>
         </div>
       )}
+
+      {/* Interactive Action Notification Popups (Toast Message Box System) */}
+      <div className="toast-container" aria-live="polite">
+        {toasts.map((toast) => {
+          const actionClass =
+            toast.actionKind === "RAISE"
+              ? "action-raise"
+              : toast.actionKind === "RESOLVE"
+              ? "action-resolve"
+              : toast.actionKind === "CLOSE"
+              ? "action-close"
+              : toast.actionKind === "REASSIGN"
+              ? "action-reassign"
+              : toast.actionKind === "ATTENDANCE"
+              ? "action-attendance"
+              : toast.actionKind === "TASK"
+              ? "action-task"
+              : "action-general";
+
+          const icon =
+            toast.actionKind === "RAISE"
+              ? "🎫"
+              : toast.actionKind === "RESOLVE"
+              ? "✅"
+              : toast.actionKind === "CLOSE"
+              ? "📁"
+              : toast.actionKind === "REASSIGN"
+              ? "🔄"
+              : toast.actionKind === "ATTENDANCE"
+              ? "⏱️"
+              : toast.actionKind === "TASK"
+              ? "📋"
+              : "ℹ️";
+
+          return (
+            <div key={toast.id} className={`toast-card ${actionClass}`}>
+              <div className="toast-icon-wrap">{icon}</div>
+              <div className="toast-body">
+                <div className="toast-header">
+                  <div className="toast-title">{toast.title}</div>
+                  <div className="toast-time">{toast.time}</div>
+                </div>
+                <div className="toast-msg">{toast.message}</div>
+              </div>
+              <button
+                className="toast-close"
+                onClick={() => removeToast(toast.id)}
+                title="Dismiss notification"
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

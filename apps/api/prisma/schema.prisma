@@ -60,6 +60,7 @@ model User {
   reportedIssues Issue[]   @relation("ReportedIssues")
   assignedIssues Issue[]   @relation("AssignedIssues")
   comments       Comment[]
+  attendanceLogs AttendanceLog[]
 }
 
 model ServiceAsset {
@@ -127,6 +128,7 @@ model Issue {
   tasks             Task[]
   comments          Comment[]
   resolvedAt        DateTime?
+  closedAt          DateTime?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -149,6 +151,26 @@ model Comment {
   createdAt     DateTime @default(now())
 
   @@index([issueId, createdAt])
+}
+
+model AttendanceLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  userName    String
+  userEmail   String
+  role        String
+  department  String?
+  clientType  String   @default("WEB_PORTAL") // WEB_PORTAL, MOBILE_APP
+  action      String   @default("LOGIN")      // LOGIN, SESSION_SWITCH, SHIFT_START
+  status      String   @default("PRESENT")    // PRESENT, ACTIVE
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, timestamp])
+  @@index([timestamp])
 }
 
 

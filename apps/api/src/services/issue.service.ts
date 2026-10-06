@@ -231,10 +231,16 @@ export class IssueService {
   ) {
     const updateData: any = { ...data };
 
-    if (data.status === IssueStatus.RESOLVED || data.status === IssueStatus.CLOSED) {
+    if (data.status === IssueStatus.RESOLVED) {
       updateData.resolvedAt = new Date();
+    } else if (data.status === IssueStatus.CLOSED) {
+      updateData.closedAt = new Date();
+      if (!updateData.resolvedAt) {
+        updateData.resolvedAt = new Date();
+      }
     } else if (data.status === IssueStatus.OPEN || data.status === IssueStatus.IN_PROGRESS) {
       updateData.resolvedAt = null;
+      updateData.closedAt = null;
     }
 
     return prisma.issue.update({

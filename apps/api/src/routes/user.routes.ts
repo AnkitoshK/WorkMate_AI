@@ -96,6 +96,32 @@ router.post("/login", async (req, res, next) => {
 
     const { password: _, ...userWithoutPassword } = user;
 
+    // Automatically record attendance log for login tracking
+    try {
+      const clientIp =
+        (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+        req.socket.remoteAddress ||
+        "127.0.0.1";
+      const userAgent = (req.headers["user-agent"] as string) || "Web Browser";
+
+      await prisma.attendanceLog.create({
+        data: {
+          userId: user.id,
+          userName: user.name,
+          userEmail: user.email.toLowerCase(),
+          role: user.role,
+          department: user.department || "Operations",
+          clientType: (req.headers["x-client-type"] as string) || "WEB_PORTAL",
+          action: "LOGIN",
+          status: "PRESENT",
+          ipAddress: clientIp,
+          userAgent: userAgent.slice(0, 255),
+        },
+      });
+    } catch (attendanceErr) {
+      console.error("Attendance log creation notice:", attendanceErr);
+    }
+
     res.json({
       success: true,
       user: userWithoutPassword,
