@@ -80,7 +80,7 @@
 - **Package Management**: pnpm monorepo workspace
 
 ---
-FOR LIVE ACCESS - Please click this link - https://work-mate-j5h7ir51a-ankitoshs-projects.vercel.app/
+FOR LIVE ACCESS - Please click this link - https://work-mate-j5h7ir51a-ankitoshs-projects.vercel.app/  **OR** https://work-mate-ai-eight.vercel.app/
 ---
 
 ## 💻 Quick Start Guide
