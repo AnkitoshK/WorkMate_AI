@@ -4,8 +4,8 @@ import path from "path";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "WorkMate AI · Jira & ServiceNow ITSM Operations",
-  description: "Enterprise Service Management, Incident Lifecycle & AI Operations Copilot.",
+  title: "WorkMate · Operations & Helpdesk Portal",
+  description: "Simple, powerful ticket management, team collaboration, and task tracking.",
 };
 
 // Read globals.css synchronously for server-side critical inlining

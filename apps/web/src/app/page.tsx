@@ -1165,14 +1165,14 @@ export default function WorkMateEnterpriseApp() {
       {/* Top Enterprise Navigation Header */}
       <header className="header-bar">
         <div className="brand-section">
-          <div className="brand-logo-badge">⚡</div>
+          <div className="brand-logo-badge">💼</div>
           <div>
-            <div className="brand-title">WorkMate AI · Jira & ServiceNow Operations</div>
+            <div className="brand-title">WorkMate</div>
             <div className="brand-subtitle">
-              <span>Enterprise Service Management & Fleet Command</span>
+              <span>Operations & Helpdesk</span>
               <span className="status-indicator">
                 <span className="status-dot"></span>
-                Neon Postgres Connected
+                Connected
               </span>
             </div>
           </div>
@@ -1180,46 +1180,46 @@ export default function WorkMateEnterpriseApp() {
 
         <div className="header-actions">
           {/* Operational Primary Actions */}
-          <div style={{ display: "flex", alignItems: "center", gap: "5px", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
             <button
               className="btn btn-primary"
-              style={{ height: "32px", padding: "0 10px", fontSize: "11px", fontWeight: "600", whiteSpace: "nowrap" }}
+              style={{ height: "32px", padding: "0 12px", fontSize: "12px", fontWeight: "600", whiteSpace: "nowrap" }}
               onClick={() => setIsNewTicketOpen(true)}
             >
-              + Log Ticket
+              + New Ticket
             </button>
 
             {/* Add User Button (Only SuperAdmin has user creation authority) */}
             {(!activeUser || activeUser.role === "SUPER_ADMIN" || users.length === 0) && (
               <button
-                className="btn btn-ai"
+                className="btn btn-secondary"
                 onClick={() => {
                   setAuthTab("register");
                   setIsAuthModalOpen(true);
                 }}
-                title="Register a new team member and define role (SuperAdmin authority)"
+                title="Add a new team member"
                 style={{
                   height: "32px",
-                  padding: "0 9px",
-                  fontSize: "11px",
-                  fontWeight: "600",
+                  padding: "0 10px",
+                  fontSize: "12px",
+                  fontWeight: "500",
                   whiteSpace: "nowrap",
                   display: "flex",
                   alignItems: "center",
                   gap: "4px",
                 }}
               >
-                👑 + Add User
+                + Add User
               </button>
             )}
           </div>
 
           {/* Clean Vertical Divider */}
-          <div style={{ width: "1px", height: "18px", background: "rgba(255, 255, 255, 0.12)", margin: "0 1px", flexShrink: 0 }} />
+          <div style={{ width: "1px", height: "18px", background: "var(--border-subtle)", margin: "0 2px", flexShrink: 0 }} />
 
           {/* User Session & Identity Group */}
           {activeUser ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "5px", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
               {/* Active User Pill & Compact Role Switcher */}
               <div className="user-switcher" title="Active Logged In Session">
                 {activeUser.avatar ? (
@@ -1234,7 +1234,7 @@ export default function WorkMateEnterpriseApp() {
                 ) : (
                   <div
                     className="user-avatar"
-                    style={{ background: "#4f46e5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "11px", fontWeight: "700" }}
+                    style={{ background: "#2563eb", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "11px", fontWeight: "700" }}
                     onClick={() => handleOpenEditProfile()}
                     title="Click to edit your photo & profile"
                   >
@@ -1245,10 +1245,9 @@ export default function WorkMateEnterpriseApp() {
                   <span className="user-name">{activeUser.name}</span>
                   <span
                     className="user-role-badge"
-                    style={{ maxWidth: "125px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                     title={activeUser.department || "Operations"}
                   >
-                    {activeUser.department || "Operations"}
+                    {activeUser.role} · {activeUser.department || "Operations"}
                   </span>
                 </div>
                 <select
@@ -1259,32 +1258,13 @@ export default function WorkMateEnterpriseApp() {
                     if (found) handleLoginAs(found);
                   }}
                   title="Quick switch active user session"
-                  style={{
-                    maxWidth: "84px",
-                    background:
-                      activeUser.role === "SUPER_ADMIN"
-                        ? "rgba(168, 85, 247, 0.2)"
-                        : activeUser.role === "MANAGER"
-                        ? "rgba(99, 102, 241, 0.2)"
-                        : activeUser.role === "ENGINEER"
-                        ? "rgba(6, 182, 212, 0.2)"
-                        : "rgba(255, 255, 255, 0.08)",
-                    color:
-                      activeUser.role === "SUPER_ADMIN"
-                        ? "#c084fc"
-                        : activeUser.role === "MANAGER"
-                        ? "#818cf8"
-                        : activeUser.role === "ENGINEER"
-                        ? "#22d3ee"
-                        : "#94a3b8",
-                  }}
                 >
                   {users.map((u) => {
                     const icon = u.role === "SUPER_ADMIN" ? "👑 " : u.role === "MANAGER" ? "👔 " : u.role === "ENGINEER" ? "🛠️ " : "👤 ";
-                    const roleLabel = u.role === "SUPER_ADMIN" ? "ADMIN" : u.role;
+                    const roleLabel = u.role === "SUPER_ADMIN" ? "Admin" : u.role;
                     return (
                       <option key={u.id} value={u.id}>
-                        {u.id === activeUser.id ? `(${roleLabel})` : `${icon}(${u.role}) ${u.name}`}
+                        {u.id === activeUser.id ? `(${roleLabel})` : `${icon}${u.name} (${roleLabel})`}
                       </option>
                     );
                   })}
@@ -1294,41 +1274,41 @@ export default function WorkMateEnterpriseApp() {
               {/* Edit Profile Button */}
               <button
                 className="btn btn-secondary"
-                style={{ height: "32px", padding: "0 9px", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px", background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", whiteSpace: "nowrap" }}
+                style={{ height: "32px", padding: "0 10px", fontSize: "11.5px", display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}
                 onClick={() => handleOpenEditProfile()}
                 title="Edit your profile picture & name"
               >
-                <span>✏️</span> Profile
+                Profile
               </button>
 
               {/* Switch Account Button */}
               <button
                 className="btn btn-secondary"
-                style={{ height: "32px", padding: "0 9px", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}
+                style={{ height: "32px", padding: "0 10px", fontSize: "11.5px", display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}
                 onClick={() => { setAuthTab("switch"); setIsAuthModalOpen(true); }}
                 title="Switch between existing accounts"
               >
-                <span>🔄</span> Switch
+                Switch
               </button>
 
               {/* Logout Button */}
               <button
                 className="btn btn-danger"
-                style={{ height: "32px", padding: "0 9px", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px", background: "rgba(244, 63, 94, 0.15)", border: "1px solid rgba(244, 63, 94, 0.3)", color: "#fb7185", whiteSpace: "nowrap" }}
+                style={{ height: "32px", padding: "0 10px", fontSize: "11.5px", display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}
                 onClick={handleLogout}
                 title="Log out of current session"
               >
-                <span>🚪</span> Logout
+                Logout
               </button>
             </div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
               <button
-                className="btn btn-secondary"
-                style={{ height: "32px", padding: "0 12px", fontSize: "11.5px", fontWeight: "600", display: "flex", alignItems: "center", gap: "5px" }}
-                onClick={() => { setAuthTab("switch"); setIsAuthModalOpen(true); }}
+                className="btn btn-primary"
+                style={{ height: "32px", padding: "0 14px", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "5px" }}
+                onClick={() => { setAuthTab("login"); setIsAuthModalOpen(true); }}
               >
-                <span>🔑</span> Log In
+                Sign In
               </button>
             </div>
           )}
@@ -1337,7 +1317,7 @@ export default function WorkMateEnterpriseApp() {
 
       {/* Global Error Banner */}
       {errorMessage && (
-        <div style={{ background: "rgba(244, 63, 94, 0.15)", border: "1px solid rgba(244, 63, 94, 0.3)", borderRadius: "12px", padding: "14px 20px", color: "#fb7185", marginBottom: "20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.3)", borderRadius: "8px", padding: "12px 18px", color: "#f87171", marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span>⚠️ {errorMessage}</span>
           <button className="btn btn-danger" style={{ padding: "4px 10px", fontSize: "12px" }} onClick={refreshAllData}>Retry</button>
         </div>
@@ -1345,30 +1325,30 @@ export default function WorkMateEnterpriseApp() {
 
       {/* Logged Out Status Banner */}
       {!activeUser && (
-        <div className="logged-out-banner" style={{ margin: "20px 0", padding: "20px 24px" }}>
+        <div className="logged-out-banner">
           <div>
-            <div style={{ fontSize: "17px", fontWeight: "800", color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
-              <span>🔐</span> Corporate Authentication Required
+            <div style={{ fontSize: "15px", fontWeight: "700", color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
+              <span>👋</span> Welcome to WorkMate
             </div>
-            <div style={{ fontSize: "13px", color: "#cbd5e1", marginTop: "4px" }}>
-              WorkMate AI guarantees complete ticket confidentiality. Enter your corporate email to sign in or select your profile.
+            <div style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
+              Sign in with your email or choose a user profile to manage tickets and view assigned tasks.
             </div>
           </div>
-          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <button
               className="btn btn-primary"
-              style={{ padding: "8px 18px", fontSize: "13px", fontWeight: "700" }}
+              style={{ padding: "8px 16px", fontSize: "13px" }}
               onClick={() => { setAuthTab("login"); setIsAuthModalOpen(true); }}
             >
-              🔑 Sign In with Work Email
+              Sign In
             </button>
             {users.length > 0 && (
               <button
                 className="btn btn-secondary"
-                style={{ padding: "8px 14px", fontSize: "12px" }}
+                style={{ padding: "8px 14px", fontSize: "13px" }}
                 onClick={() => { setAuthTab("switch"); setIsAuthModalOpen(true); }}
               >
-                👥 Choose Account ({users.length})
+                Choose Profile ({users.length})
               </button>
             )}
           </div>
@@ -1378,46 +1358,38 @@ export default function WorkMateEnterpriseApp() {
       {/* Active Session Switch Notification Banner */}
       {switchNotification && (
         <div style={{
-          background: switchNotification.role === "SUPER_ADMIN" 
-            ? "linear-gradient(90deg, rgba(168, 85, 247, 0.2), rgba(99, 102, 241, 0.2))"
-            : switchNotification.role === "MANAGER"
-            ? "linear-gradient(90deg, rgba(99, 102, 241, 0.2), rgba(6, 182, 212, 0.2))"
-            : switchNotification.role === "ENGINEER"
-            ? "linear-gradient(90deg, rgba(6, 182, 212, 0.2), rgba(52, 211, 153, 0.2))"
-            : "linear-gradient(90deg, rgba(100, 116, 139, 0.2), rgba(71, 85, 105, 0.2))",
-          border: `1px solid ${
-            switchNotification.role === "SUPER_ADMIN" ? "rgba(168, 85, 247, 0.4)" : "rgba(255, 255, 255, 0.15)"
-          }`,
-          borderRadius: "12px",
-          padding: "12px 20px",
+          background: "var(--bg-card)",
+          border: "1px solid var(--border-subtle)",
+          borderLeft: "4px solid var(--accent-primary)",
+          borderRadius: "8px",
+          padding: "12px 16px",
           marginBottom: "16px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <span style={{ fontSize: "24px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "20px" }}>
               {switchNotification.role === "SUPER_ADMIN" ? "👑" : switchNotification.role === "MANAGER" ? "👔" : switchNotification.role === "ENGINEER" ? "🛠️" : "👤"}
             </span>
             <div>
-              <div style={{ fontSize: "14px", fontWeight: "800", color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
-                <span>Account Switched to {switchNotification.name}</span>
+              <div style={{ fontSize: "13px", fontWeight: "700", color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span>Active Account: {switchNotification.name}</span>
                 <span className="badge badge-assigned" style={{ fontSize: "10px" }}>{switchNotification.role}</span>
               </div>
-              <div style={{ fontSize: "12px", color: "#cbd5e1", marginTop: "2px" }}>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
                 {switchNotification.role === "SUPER_ADMIN" 
-                  ? "✓ Clearance: Global SuperAdmin · All tabs, Team Directory & Role Mapping, Service Catalog, and Ticket Assignment unlocked."
+                  ? "Admin permissions: Full access to tickets, team management, and catalog."
                   : switchNotification.role === "MANAGER"
-                  ? `✓ Clearance: Squad Lead (${switchNotification.department || "Engineering"}) · Work order dispatch & squad reassignment active. SuperAdmin team directory locked (403).`
+                  ? `Manager permissions (${switchNotification.department || "Operations"}): Can reassign and review tickets.`
                   : switchNotification.role === "ENGINEER"
-                  ? `✓ Clearance: Software Engineer (${switchNotification.department || "Software"}) · Scoped to software incidents and squad queue. Directory management & ticket reassignment locked.`
-                  : `✓ Clearance: End-User Reporter · Personal ticket submissions only. Workflow status and admin modules locked.`}
+                  ? `Engineer permissions (${switchNotification.department || "Engineering"}): Can resolve assigned technical tickets.`
+                  : "User permissions: Can create tickets and track personal submissions."}
               </div>
             </div>
           </div>
           <button 
-            style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "18px" }}
+            style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "16px" }}
             onClick={() => setSwitchNotification(null)}
           >
             ✕
@@ -1428,31 +1400,27 @@ export default function WorkMateEnterpriseApp() {
       {/* Enterprise Tabs Navigation */}
       <nav className="nav-tabs">
         <button className={`nav-tab-btn ${activeTab === "dashboard" ? "active" : ""}`} onClick={() => setActiveTab("dashboard")}>
-          <span>📊</span> Command Dashboard
+          <span>📊</span> Dashboard
         </button>
         <button className={`nav-tab-btn ${activeTab === "tickets" ? "active" : ""}`} onClick={() => setActiveTab("tickets")}>
-          <span>🎫</span> Ticketing Tool (Jira View)
+          <span>🎫</span> Tickets
           <span className="tab-badge">{isSuperAdmin ? issues.length : filteredIssues.length}</span>
         </button>
         <button className={`nav-tab-btn ${activeTab === "services" ? "active" : ""}`} onClick={() => setActiveTab("services")}>
-          <span>🌐</span> Applications & Websites ({services.length})
+          <span>🌐</span> Services & Apps ({services.length})
         </button>
         <button 
           className={`nav-tab-btn ${activeTab === "team" ? "active" : ""}`} 
           onClick={() => setActiveTab("team")}
-          style={{ opacity: activeUser && !isSuperAdmin && users.length > 0 ? 0.75 : 1 }}
         >
-          <span>{activeUser && !isSuperAdmin && users.length > 0 ? "🔒" : "👥"}</span> Team & Roles {activeUser && !isSuperAdmin && users.length > 0 ? "(Restricted)" : "(SuperAdmin)"}
-          {activeUser && !isSuperAdmin && users.length > 0 && (
-            <span style={{ fontSize: "9px", background: "rgba(244,63,94,0.2)", color: "#fb7185", padding: "1px 5px", borderRadius: "4px", marginLeft: "4px" }}>403</span>
-          )}
+          <span>👥</span> Team Members
           <span className="tab-badge">{users.length}</span>
         </button>
         <button className={`nav-tab-btn ${activeTab === "tasks" ? "active" : ""}`} onClick={() => setActiveTab("tasks")}>
-          <span>📋</span> Work Orders ({filteredTasks.length})
+          <span>📋</span> Tasks ({filteredTasks.length})
         </button>
         <button className={`nav-tab-btn ${activeTab === "ai" ? "active" : ""}`} onClick={() => setActiveTab("ai")}>
-          <span>✨</span> AI Triage Hub
+          <span>✨</span> AI Assistant
         </button>
       </nav>
 
@@ -1462,7 +1430,7 @@ export default function WorkMateEnterpriseApp() {
           <div className="kpi-grid">
             <div className="kpi-card">
               <div className="kpi-header">
-                <span className="kpi-title">{isSuperAdmin ? "Active Fleet Incidents" : `My Active Incidents (${activeUser?.name || "User"})`}</span>
+                <span className="kpi-title">{isSuperAdmin ? "Active Tickets" : `My Tickets (${activeUser?.name || "User"})`}</span>
                 <span className="kpi-icon-pill">🎫</span>
               </div>
               <div className="kpi-value" style={{ color: "#38bdf8" }}>
@@ -1470,49 +1438,49 @@ export default function WorkMateEnterpriseApp() {
               </div>
               <div className="kpi-footer">
                 {isSuperAdmin ? (
-                  <><span>{stats?.overview.openIssues ?? 0} unassigned queue</span> · <span>{stats?.overview.inProgressIssues ?? 0} in remediation</span></>
+                  <><span>{stats?.overview.openIssues ?? 0} unassigned</span> · <span>{stats?.overview.inProgressIssues ?? 0} in progress</span></>
                 ) : (
-                  <><span>{myOpenIssuesCount} pending / in remediation</span> · <span>{myResolvedIssuesCount} resolved</span></>
+                  <><span>{myOpenIssuesCount} pending / in progress</span> · <span>{myResolvedIssuesCount} resolved</span></>
                 )}
               </div>
             </div>
 
             <div className="kpi-card">
               <div className="kpi-header">
-                <span className="kpi-title">Critical & Urgent Alerts</span>
-                <span className="kpi-icon-pill" style={{ background: "rgba(244, 63, 94, 0.15)" }}>🚨</span>
+                <span className="kpi-title">High Priority Tickets</span>
+                <span className="kpi-icon-pill" style={{ background: "rgba(239, 68, 68, 0.12)" }}>🚨</span>
               </div>
-              <div className="kpi-value" style={{ color: "#fb7185" }}>
+              <div className="kpi-value" style={{ color: "#f87171" }}>
                 {(stats?.overview.urgentIssues ?? 0) + (stats?.overview.highIssues ?? 0)}
               </div>
               <div className="kpi-footer">
-                <span>{stats?.overview.urgentIssues ?? 0} urgent priority</span> · <span>{stats?.overview.highIssues ?? 0} high priority</span>
+                <span>{stats?.overview.urgentIssues ?? 0} urgent</span> · <span>{stats?.overview.highIssues ?? 0} high</span>
               </div>
             </div>
 
             <div className="kpi-card">
               <div className="kpi-header">
-                <span className="kpi-title">SLA Compliance Rate</span>
+                <span className="kpi-title">SLA On Track</span>
                 <span className="kpi-icon-pill">🎯</span>
               </div>
               <div className="kpi-value" style={{ color: "#34d399" }}>
                 88%
               </div>
               <div className="kpi-footer">
-                <span>1 ticket breached SLA</span> · <span>4 tickets within target</span>
+                <span>Tickets resolved within SLA target</span>
               </div>
             </div>
 
             <div className="kpi-card">
               <div className="kpi-header">
-                <span className="kpi-title">Task Completion Velocity</span>
-                <span className="kpi-icon-pill">⚡</span>
+                <span className="kpi-title">Completed Tasks</span>
+                <span className="kpi-icon-pill">✅</span>
               </div>
               <div className="kpi-value" style={{ color: "#a855f7" }}>
                 {stats?.overview.taskCompletionRate ?? 0}%
               </div>
               <div className="kpi-footer">
-                <span>{stats?.overview.doneTasks ?? 0} of {stats?.overview.totalTasks ?? 0} work orders closed</span>
+                <span>{stats?.overview.doneTasks ?? 0} of {stats?.overview.totalTasks ?? 0} tasks finished</span>
               </div>
             </div>
           </div>
@@ -1521,20 +1489,20 @@ export default function WorkMateEnterpriseApp() {
           <div className="ai-briefing-panel">
             <div className="ai-briefing-header">
               <span className="ai-badge">
-                <span>✨</span> WorkMate AI Copilot · Executive Shift Briefing
+                <span>✨</span> Operations Summary & Recommendations
               </span>
-              <button className="btn btn-ai" style={{ padding: "6px 14px", fontSize: "12px" }} onClick={fetchShiftSummary} disabled={aiAnalyzing}>
-                {aiAnalyzing ? "Generating..." : "⚡ Re-analyze Operations"}
+              <button className="btn btn-secondary" style={{ padding: "5px 12px", fontSize: "12px" }} onClick={fetchShiftSummary} disabled={aiAnalyzing}>
+                {aiAnalyzing ? "Updating..." : "Refresh Summary"}
               </button>
             </div>
 
-            <div className="ai-headline">{shiftSummary?.headline || "Synthesizing cross-department telemetry..."}</div>
-            <p className="ai-summary-text">{shiftSummary?.operationalSummary || "Monitoring software websites, cloud APIs, physical facilities, and network links."}</p>
+            <div className="ai-headline">{shiftSummary?.headline || "Overview of active tickets and team priorities"}</div>
+            <p className="ai-summary-text">{shiftSummary?.operationalSummary || "Tracking active services, tickets, and team priorities."}</p>
 
             <div className="ai-bullet-list">
               {shiftSummary?.recommendedFocus?.map((focus, idx) => (
                 <div key={idx} className="ai-bullet-item">
-                  <span style={{ color: "#c084fc", fontWeight: "bold" }}>0{idx + 1}.</span>
+                  <span style={{ color: "#38bdf8", fontWeight: "bold" }}>{idx + 1}.</span>
                   <span>{focus}</span>
                 </div>
               ))}
@@ -1617,14 +1585,14 @@ export default function WorkMateEnterpriseApp() {
                 <input
                   type="text"
                   className="search-input"
-                  placeholder="Search tickets, websites, apps, or symptoms..."
+                  placeholder="Search tickets by title, service, or keywords..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
 
               <select className="filter-select" value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)}>
-                <option value="ALL">All Engineering Teams</option>
+                <option value="ALL">All Departments</option>
                 <option value="Backend & Core APIs">Backend & Core APIs</option>
                 <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
                 <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
@@ -1634,7 +1602,7 @@ export default function WorkMateEnterpriseApp() {
 
               <select className="filter-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <option value="ALL">All Statuses</option>
-                <option value="OPEN">Open (Unassigned)</option>
+                <option value="OPEN">Open</option>
                 <option value="ASSIGNED">Assigned</option>
                 <option value="IN_PROGRESS">In Progress</option>
                 <option value="RESOLVED">Resolved</option>
@@ -1650,7 +1618,7 @@ export default function WorkMateEnterpriseApp() {
               </select>
             </div>
 
-            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <div className="view-switch">
                 <button className={`view-btn ${viewMode === "kanban" ? "active" : ""}`} onClick={() => setViewMode("kanban")}>
                   Kanban
@@ -1664,24 +1632,21 @@ export default function WorkMateEnterpriseApp() {
                 <button
                   className="btn btn-danger"
                   style={{
-                    background: "rgba(244, 63, 94, 0.15)",
-                    color: "#fb7185",
-                    border: "1px solid rgba(244, 63, 94, 0.35)",
-                    padding: "8px 12px",
+                    padding: "7px 10px",
                     fontSize: "12px",
                     display: "flex",
                     alignItems: "center",
                     gap: "5px",
                   }}
                   onClick={handlePurgeAllTickets}
-                  title="SuperAdmin: Permanently purge all testing tickets from database"
+                  title="Clear all tickets from database"
                 >
-                  <span>🗑️</span> Purge Test Tickets ({issues.length})
+                  Clear All ({issues.length})
                 </button>
               )}
 
               <button className="btn btn-primary" onClick={() => setIsNewTicketOpen(true)}>
-                + Log Incident
+                + New Ticket
               </button>
             </div>
           </div>
@@ -1689,10 +1654,10 @@ export default function WorkMateEnterpriseApp() {
           {/* Active Role Scoping Notice & Quick Toggles */}
           {activeUser ? (
             <div style={{
-              background: "rgba(99, 102, 241, 0.08)",
-              border: "1px solid rgba(99, 102, 241, 0.25)",
-              borderRadius: "12px",
-              padding: "10px 16px",
+              background: "var(--bg-card)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "8px",
+              padding: "10px 14px",
               marginBottom: "16px",
               display: "flex",
               alignItems: "center",
@@ -1702,12 +1667,12 @@ export default function WorkMateEnterpriseApp() {
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px" }}>
                 {isSuperAdmin ? (
-                  <span>👑 <strong>SuperAdmin Global Queue:</strong> Showing all organization incident tickets across all engineering squads.</span>
+                  <span>Showing all organization tickets across departments.</span>
                 ) : (
-                  <span>👤 <strong>{activeUser.name}&apos;s Workspace:</strong> Showing only tickets assigned to you or reported by you.</span>
+                  <span>Showing tickets assigned to you or created by you.</span>
                 )}
                 <span className="badge badge-assigned" style={{ fontSize: "11px" }}>
-                  {filteredIssues.length} visible {isSuperAdmin ? `of ${issues.length} total` : "assigned / reported"}
+                  {filteredIssues.length} visible {isSuperAdmin ? `of ${issues.length} total` : ""}
                 </span>
               </div>
 
@@ -1719,25 +1684,25 @@ export default function WorkMateEnterpriseApp() {
                       className={`btn ${roleScopeFilter === "ALL_TICKETS" || roleScopeFilter === "MY_ROLE_DEFAULT" ? "btn-primary" : "btn-secondary"}`}
                       style={{ padding: "4px 10px", fontSize: "11px" }}
                       onClick={() => setRoleScopeFilter("ALL_TICKETS")}
-                      title="View all organization tickets across the entire fleet"
+                      title="View all organization tickets"
                     >
-                      🌐 All Org ({issues.length})
+                      All Tickets ({issues.length})
                     </button>
                     <button
                       className={`btn ${roleScopeFilter === "MY_ASSIGNED" ? "btn-primary" : "btn-secondary"}`}
                       style={{ padding: "4px 10px", fontSize: "11px" }}
                       onClick={() => setRoleScopeFilter("MY_ASSIGNED")}
-                      title="Only tickets assigned directly to you"
+                      title="Tickets assigned to you"
                     >
-                      🎯 Assigned to Me ({issues.filter((i) => i.assigneeId === activeUser.id).length})
+                      Assigned to Me ({issues.filter((i) => i.assigneeId === activeUser.id).length})
                     </button>
                     <button
                       className={`btn ${roleScopeFilter === "MY_REPORTED" ? "btn-primary" : "btn-secondary"}`}
                       style={{ padding: "4px 10px", fontSize: "11px" }}
                       onClick={() => setRoleScopeFilter("MY_REPORTED")}
-                      title="Tickets reported by you"
+                      title="Tickets created by you"
                     >
-                      📝 Reported by Me ({issues.filter((i) => i.reporterId === activeUser.id).length})
+                      Reported by Me ({issues.filter((i) => i.reporterId === activeUser.id).length})
                     </button>
                   </>
                 ) : (
@@ -1746,32 +1711,26 @@ export default function WorkMateEnterpriseApp() {
                       className={`btn ${roleScopeFilter === "MY_ROLE_DEFAULT" ? "btn-primary" : "btn-secondary"}`}
                       style={{ padding: "4px 10px", fontSize: "11px" }}
                       onClick={() => setRoleScopeFilter("MY_ROLE_DEFAULT")}
-                      title="All your assigned and reported work"
+                      title="All your tickets"
                     >
-                      ⚡ All My Tickets ({myIssues.length})
+                      All My Tickets ({myIssues.length})
                     </button>
                     <button
                       className={`btn ${roleScopeFilter === "MY_ASSIGNED" ? "btn-primary" : "btn-secondary"}`}
                       style={{ padding: "4px 10px", fontSize: "11px" }}
                       onClick={() => setRoleScopeFilter("MY_ASSIGNED")}
-                      title="Only tickets assigned directly to you"
+                      title="Only tickets assigned to you"
                     >
-                      🎯 Assigned to Me ({issues.filter((i) => i.assigneeId === activeUser.id).length})
+                      Assigned to Me ({issues.filter((i) => i.assigneeId === activeUser.id).length})
                     </button>
                     <button
                       className={`btn ${roleScopeFilter === "MY_REPORTED" ? "btn-primary" : "btn-secondary"}`}
                       style={{ padding: "4px 10px", fontSize: "11px" }}
                       onClick={() => setRoleScopeFilter("MY_REPORTED")}
-                      title="Tickets reported by you"
+                      title="Tickets created by you"
                     >
-                      📝 Reported by Me ({issues.filter((i) => i.reporterId === activeUser.id).length})
+                      Reported by Me ({issues.filter((i) => i.reporterId === activeUser.id).length})
                     </button>
-                    <span
-                      style={{ fontSize: "11px", color: "var(--text-dim)", padding: "4px 8px", background: "rgba(255,255,255,0.04)", borderRadius: "6px", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                      title="Other team members' tickets are hidden (Restricted to SuperAdmin)"
-                    >
-                      🔒 Other Tickets Hidden (SuperAdmin Only)
-                    </span>
                   </>
                 )}
               </div>
@@ -2058,80 +2017,63 @@ export default function WorkMateEnterpriseApp() {
       {activeTab === "team" && (
         <div>
           {activeUser && activeUser.role !== "SUPER_ADMIN" && users.length > 0 ? (
-            /* 403 Forbidden Access Denied Gate */
+            /* Standard Admin Access Notice */
             <div style={{
-              background: "linear-gradient(135deg, rgba(30, 27, 75, 0.7), rgba(15, 23, 42, 0.9))",
-              border: "1px solid rgba(244, 63, 94, 0.4)",
-              borderRadius: "16px",
-              padding: "48px 32px",
+              background: "var(--bg-card)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "12px",
+              padding: "40px 24px",
               textAlign: "center",
-              boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
-              maxWidth: "720px",
+              maxWidth: "600px",
               margin: "30px auto",
             }}>
               <div style={{
-                width: "80px",
-                height: "80px",
+                width: "56px",
+                height: "56px",
                 borderRadius: "50%",
-                background: "rgba(244, 63, 94, 0.15)",
-                border: "2px solid rgba(244, 63, 94, 0.4)",
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-subtle)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "38px",
-                margin: "0 auto 20px",
+                fontSize: "26px",
+                margin: "0 auto 16px",
               }}>
                 🔒
               </div>
               <div style={{
                 display: "inline-block",
-                padding: "5px 14px",
-                borderRadius: "20px",
-                background: "rgba(244, 63, 94, 0.2)",
-                color: "#fb7185",
-                fontWeight: "800",
-                fontSize: "12px",
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                marginBottom: "14px",
-                border: "1px solid rgba(244, 63, 94, 0.3)",
+                padding: "3px 10px",
+                borderRadius: "6px",
+                background: "rgba(239, 68, 68, 0.12)",
+                color: "#f87171",
+                fontWeight: "600",
+                fontSize: "11px",
+                marginBottom: "12px",
               }}>
-                403 Forbidden · SuperAdmin Clearance Required
+                Administrator Access Required
               </div>
-              <h2 style={{ fontSize: "24px", fontWeight: "800", color: "#fff", marginBottom: "12px" }}>
-                Restricted Administration Zone
+              <h2 style={{ fontSize: "20px", fontWeight: "700", color: "#fff", marginBottom: "10px" }}>
+                Team Management
               </h2>
-              <p style={{ color: "#cbd5e1", fontSize: "14px", lineHeight: "1.6", maxWidth: "580px", margin: "0 auto 24px" }}>
-                You are currently signed in as <strong style={{ color: "#fff" }}>{activeUser.name}</strong> with clearance level <span style={{ color: "#38bdf8", fontWeight: "700" }}>{activeUser.role}</span> in <strong style={{ color: "#e2e8f0" }}>{activeUser.department || "Operations"}</strong>.
-                Viewing internal organization rosters, altering permission roles, and revoking accounts are strictly restricted to <strong>SuperAdmin</strong> operators.
+              <p style={{ color: "var(--text-muted)", fontSize: "13.5px", lineHeight: "1.6", maxWidth: "480px", margin: "0 auto 20px" }}>
+                You are currently signed in as <strong>{activeUser.name}</strong> ({activeUser.role}). Adding new members and editing user permissions is reserved for administrators.
               </p>
 
-              <div style={{ background: "rgba(0,0,0,0.35)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", padding: "18px", marginBottom: "28px", textAlign: "left", fontSize: "12px", color: "#94a3b8" }}>
-                <div style={{ fontWeight: "700", color: "#e2e8f0", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span>🛡️</span> Role-Based Access Control (RBAC) Enforcement Policy:
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                  <div>👑 <strong>SUPER_ADMIN</strong>: Global admin, user management & catalog</div>
-                  <div>👔 <strong>MANAGER</strong>: Squad lead, triage approvals & reassignment</div>
-                  <div>🛠️ <strong>ENGINEER</strong>: On-call incident remediation & code fixes</div>
-                  <div>👤 <strong>USER</strong>: Incident reporting & personal ticket tracking</div>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
                 <button
-                  className="btn btn-ai"
-                  style={{ padding: "10px 22px", fontSize: "13px" }}
+                  className="btn btn-primary"
+                  style={{ padding: "8px 18px", fontSize: "13px" }}
                   onClick={() => { setAuthTab("switch"); setIsAuthModalOpen(true); }}
                 >
-                  🔄 Switch to SuperAdmin Account
+                  Switch to Admin Account
                 </button>
                 <button
                   className="btn btn-secondary"
-                  style={{ padding: "10px 22px", fontSize: "13px" }}
+                  style={{ padding: "8px 18px", fontSize: "13px" }}
                   onClick={() => setActiveTab("tickets")}
                 >
-                  🎫 Return to My Tickets
+                  Return to Tickets
                 </button>
               </div>
             </div>
@@ -2139,13 +2081,13 @@ export default function WorkMateEnterpriseApp() {
             <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
                 <div>
-                  <h2 style={{ fontSize: "20px", fontWeight: "800" }}>Team Directory & Role Mapping</h2>
+                  <h2 style={{ fontSize: "18px", fontWeight: "700" }}>Team Members & Roles</h2>
                   <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                    Manage team members, define roles (SuperAdmin, Admin, Manager, Engineer), and switch active sessions.
+                    View team members, assign department roles, or switch accounts.
                   </p>
                 </div>
                 <button className="btn btn-primary" onClick={() => { setAuthTab("register"); setIsAuthModalOpen(true); }}>
-                  👑 + Create Team Member
+                  + Add Team Member
                 </button>
               </div>
 
@@ -2248,21 +2190,21 @@ export default function WorkMateEnterpriseApp() {
           <div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
               <h2 style={{ fontSize: "18px", fontWeight: "700" }}>
-                {isSuperAdmin ? "Operational Work Orders" : `${activeUser?.name || "User"}'s Work Orders`} ({filteredTasks.length})
+                {isSuperAdmin ? "Team Tasks" : `${activeUser?.name || "My"} Tasks`} ({filteredTasks.length})
               </h2>
               {activeUser?.role !== "USER" ? (
                 <button className="btn btn-primary" onClick={() => setIsNewTaskOpen(true)}>+ Add Task</button>
               ) : (
-                <span style={{ fontSize: "12px", color: "var(--text-dim)", background: "rgba(255,255,255,0.05)", padding: "4px 10px", borderRadius: "6px" }}>
-                  🔒 Tasks managed by Engineering
+                <span style={{ fontSize: "12px", color: "var(--text-dim)", background: "var(--bg-surface)", padding: "4px 10px", borderRadius: "6px" }}>
+                  Tasks managed by staff
                 </span>
               )}
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               {filteredTasks.length === 0 ? (
-                <div style={{ padding: "32px", textAlign: "center", background: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px dashed rgba(255,255,255,0.1)", color: "var(--text-muted)" }}>
-                  <span>📋 No work orders assigned to you or linked to your tickets.</span>
+                <div style={{ padding: "32px", textAlign: "center", background: "var(--bg-card)", borderRadius: "8px", border: "1px dashed var(--border-subtle)", color: "var(--text-muted)" }}>
+                  <span>📋 No tasks assigned yet.</span>
                 </div>
               ) : (
                 filteredTasks.map((task) => (
@@ -2287,7 +2229,7 @@ export default function WorkMateEnterpriseApp() {
                           )}
                           {task.dueDate && (
                             <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>
-                              ⏰ Due: {new Date(task.dueDate).toLocaleDateString()}
+                              Due: {new Date(task.dueDate).toLocaleDateString()}
                             </span>
                           )}
                         </div>
@@ -2307,16 +2249,16 @@ export default function WorkMateEnterpriseApp() {
           </div>
 
           <div className="sandbox-card">
-            <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "14px" }}>Quick Dispatch Task</h3>
+            <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "14px" }}>Create a Task</h3>
             {activeUser?.role === "USER" ? (
-              <div style={{ textAlign: "center", padding: "28px 16px", background: "rgba(244, 63, 94, 0.08)", borderRadius: "12px", border: "1px solid rgba(244, 63, 94, 0.25)" }}>
-                <div style={{ fontSize: "32px", marginBottom: "8px" }}>🔒</div>
-                <div style={{ fontSize: "14px", fontWeight: "700", color: "#fff", marginBottom: "6px" }}>Work Order Dispatch Restricted</div>
-                <p style={{ fontSize: "12px", color: "#cbd5e1", lineHeight: "1.5", marginBottom: "16px" }}>
-                  Reporters and end-users cannot dispatch technical work orders. Please submit an Incident Ticket instead.
+              <div style={{ textAlign: "center", padding: "28px 16px", background: "var(--bg-surface)", borderRadius: "8px", border: "1px solid var(--border-subtle)" }}>
+                <div style={{ fontSize: "28px", marginBottom: "8px" }}>ℹ️</div>
+                <div style={{ fontSize: "14px", fontWeight: "700", color: "#fff", marginBottom: "6px" }}>Task Creation Restricted</div>
+                <p style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.5", marginBottom: "16px" }}>
+                  Tasks are assigned by team leads and engineers. If you are experiencing an issue, please submit a ticket.
                 </p>
                 <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => setIsNewTicketOpen(true)}>
-                  + Log Incident Ticket
+                  + New Ticket
                 </button>
               </div>
             ) : (
@@ -2368,25 +2310,25 @@ export default function WorkMateEnterpriseApp() {
         </div>
       )}
 
-      {/* TAB 6: AI INTELLIGENCE HUB */}
+      {/* TAB 6: AI ASSISTANT */}
       {activeTab === "ai" && (
         <div>
           <div className="ai-briefing-panel" style={{ marginBottom: "24px" }}>
             <span className="ai-badge" style={{ marginBottom: "8px" }}>
-              <span>🧠</span> Autonomous Application & Incident Recognition
+              <span>✨</span> AI Assistant
             </span>
-            <div className="ai-headline">How WorkMate AI Automatically Recognizes Your Websites and Apps</div>
+            <div className="ai-headline">Smart Ticket Analysis & Troubleshooting</div>
             <p className="ai-summary-text">
-              In real enterprise software operations, developers and automated APM trackers submit incident reports with URLs, stacktraces, or error codes. WorkMate AI analyzes the submission against the <strong>Service & Application Catalog</strong>, matches it to the exact registered microservice (e.g. <em>Billing Gateway</em> or <em>Web Portal</em>), tags the responsible Engineering Team, and assigns the on-call specialist!
+              WorkMate can automatically match issues to registered services, suggest the right department and priority, and provide step-by-step troubleshooting suggestions.
             </p>
           </div>
 
           <div className="ai-sandbox-grid">
             <div className="sandbox-card">
-              <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "16px" }}>⚡ Real-time Service & Incident Triage Sandbox</h3>
+              <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "16px" }}>Test Issue Analysis</h3>
 
               <div className="form-group">
-                <label className="form-label">Incident Symptom / Error Title</label>
+                <label className="form-label">Issue Title / Error Message</label>
                 <input
                   type="text"
                   className="form-input"
@@ -2396,7 +2338,7 @@ export default function WorkMateEnterpriseApp() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Cluster / Location / URL</label>
+                <label className="form-label">Location or URL (Optional)</label>
                 <input
                   type="text"
                   className="form-input"
@@ -2406,7 +2348,7 @@ export default function WorkMateEnterpriseApp() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Stacktrace / Detailed Error Logs</label>
+                <label className="form-label">Details / Error Description</label>
                 <textarea
                   className="form-textarea"
                   value={sandboxDesc}
@@ -2414,17 +2356,17 @@ export default function WorkMateEnterpriseApp() {
                 />
               </div>
 
-              <button className="btn btn-ai" style={{ width: "100%" }} onClick={handleRunSandboxTriage} disabled={aiAnalyzing}>
-                {aiAnalyzing ? "Running Neural Diagnosis..." : "✨ Run Autonomous AI Diagnosis"}
+              <button className="btn btn-primary" style={{ width: "100%" }} onClick={handleRunSandboxTriage} disabled={aiAnalyzing}>
+                {aiAnalyzing ? "Analyzing Issue..." : "Analyze with AI"}
               </button>
             </div>
 
-            <div className="sandbox-card" style={{ borderColor: sandboxResult ? "rgba(168, 85, 247, 0.4)" : "var(--border-subtle)" }}>
-              <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "16px" }}>🎯 AI Diagnostic & Routing Output</h3>
+            <div className="sandbox-card">
+              <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "16px" }}>AI Suggestions & Results</h3>
 
               {!sandboxResult ? (
                 <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--text-dim)" }}>
-                  Click "Run Autonomous AI Diagnosis" to analyze symptoms.
+                  Enter an issue on the left and click "Analyze with AI" to see recommendations.
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -2443,26 +2385,26 @@ export default function WorkMateEnterpriseApp() {
                   </div>
 
                   {sandboxResult.detectedServiceName && (
-                    <div style={{ background: "rgba(6, 182, 212, 0.1)", border: "1px solid rgba(6, 182, 212, 0.3)", padding: "10px 14px", borderRadius: "10px" }}>
-                      <div style={{ fontSize: "11px", fontWeight: "700", color: "var(--accent-cyan)", textTransform: "uppercase" }}>Auto-Recognized Application</div>
-                      <div style={{ fontSize: "14px", fontWeight: "800", color: "#fff" }}>🌐 {sandboxResult.detectedServiceName}</div>
-                      <div style={{ fontSize: "12px", color: "#cbd5e1" }}>Target SLA: {sandboxResult.slaTargetMinutes || 30} minutes</div>
+                    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", padding: "10px 14px", borderRadius: "8px" }}>
+                      <div style={{ fontSize: "11px", fontWeight: "600", color: "var(--accent-cyan)", textTransform: "uppercase" }}>Suggested Service / App</div>
+                      <div style={{ fontSize: "14px", fontWeight: "700", color: "#fff" }}>🌐 {sandboxResult.detectedServiceName}</div>
+                      <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Target SLA: {sandboxResult.slaTargetMinutes || 30} minutes</div>
                     </div>
                   )}
 
                   <div>
-                    <div style={{ fontSize: "11px", fontWeight: "700", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "4px" }}>Executive Summary</div>
+                    <div style={{ fontSize: "11px", fontWeight: "700", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "4px" }}>Summary</div>
                     <div style={{ fontSize: "13px", color: "#f1f5f9", lineHeight: "1.5" }}>{sandboxResult.summary}</div>
                   </div>
 
-                  <div style={{ background: "rgba(168, 85, 247, 0.08)", border: "1px solid rgba(168, 85, 247, 0.25)", padding: "10px 12px", borderRadius: "10px" }}>
-                    <div style={{ fontSize: "11px", fontWeight: "700", color: "#e9d5ff", textTransform: "uppercase", marginBottom: "4px" }}>Root Cause Hypothesis</div>
+                  <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", padding: "10px 12px", borderRadius: "8px" }}>
+                    <div style={{ fontSize: "11px", fontWeight: "700", color: "#93c5fd", textTransform: "uppercase", marginBottom: "4px" }}>Possible Root Cause</div>
                     <div style={{ fontSize: "13px", color: "#f8fafc" }}>{sandboxResult.rootCause}</div>
                   </div>
 
                   <div>
-                    <div style={{ fontSize: "11px", fontWeight: "700", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "6px" }}>Standard Operating Procedure (SOP) Checklist</div>
-                    <div style={{ whiteSpace: "pre-line", fontSize: "12px", color: "#cbd5e1", lineHeight: "1.6", background: "rgba(0,0,0,0.2)", padding: "10px 12px", borderRadius: "8px" }}>
+                    <div style={{ fontSize: "11px", fontWeight: "700", color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "6px" }}>Recommended Action Steps</div>
+                    <div style={{ whiteSpace: "pre-line", fontSize: "12px", color: "#cbd5e1", lineHeight: "1.6", background: "var(--bg-surface)", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--border-subtle)" }}>
                       {sandboxResult.suggestedAction}
                     </div>
                   </div>
@@ -2504,40 +2446,34 @@ export default function WorkMateEnterpriseApp() {
               {selectedIssue.description}
             </div>
 
-            {/* AI Copilot Box */}
-            <div style={{ background: "linear-gradient(135deg, rgba(30, 27, 75, 0.4), rgba(15, 23, 42, 0.6))", border: "1px solid rgba(168, 85, 247, 0.3)", borderRadius: "14px", padding: "16px 20px", marginBottom: "20px" }}>
+            {/* AI Assistant Advice Box */}
+            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: "10px", padding: "16px 18px", marginBottom: "20px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-                <span style={{ fontSize: "12px", fontWeight: "700", color: "#e9d5ff", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span>✨</span> WorkMate AI Incident Triage & SOP
+                <span style={{ fontSize: "12px", fontWeight: "700", color: "#93c5fd", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>✨</span> AI Analysis & Recommendations
                 </span>
-                <button className="btn btn-ai" style={{ padding: "4px 10px", fontSize: "11px" }} onClick={() => handleRunAiTriageOnIssue(selectedIssue.id)} disabled={aiAnalyzing}>
-                  {aiAnalyzing ? "Triaging..." : "⚡ Re-Triage"}
+                <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "11px" }} onClick={() => handleRunAiTriageOnIssue(selectedIssue.id)} disabled={aiAnalyzing}>
+                  {aiAnalyzing ? "Analyzing..." : "Refresh Advice"}
                 </button>
               </div>
 
               {selectedIssue.aiSummary && <div style={{ fontSize: "13px", color: "#f1f5f9", marginBottom: "10px" }}>{selectedIssue.aiSummary}</div>}
-              {selectedIssue.aiRootCause && <div style={{ fontSize: "12px", color: "#d8b4fe", marginBottom: "10px" }}><strong>Suspected Root Cause:</strong> {selectedIssue.aiRootCause}</div>}
+              {selectedIssue.aiRootCause && <div style={{ fontSize: "12px", color: "#93c5fd", marginBottom: "10px" }}><strong>Possible Cause:</strong> {selectedIssue.aiRootCause}</div>}
               {selectedIssue.aiSuggestedAction && (
-                <div style={{ whiteSpace: "pre-line", fontSize: "12px", color: "#cbd5e1", background: "rgba(0,0,0,0.25)", padding: "10px 12px", borderRadius: "8px" }}>
-                  <strong>Recommended Remediation Steps:</strong>
+                <div style={{ whiteSpace: "pre-line", fontSize: "12px", color: "#cbd5e1", background: "var(--bg-card)", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--border-subtle)" }}>
+                  <strong>Recommended Steps:</strong>
                   {"\n" + selectedIssue.aiSuggestedAction}
                 </div>
               )}
             </div>
 
-            {/* Status & Assignment with RBAC */}
+            {/* Status & Assignment */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "20px" }}>
               <div className="form-group" style={{ margin: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                  <label className="form-label" style={{ margin: 0 }}>Workflow Status</label>
+                  <label className="form-label" style={{ margin: 0 }}>Status</label>
                   {activeUser?.role === "USER" && (
-                    <span style={{ fontSize: "10px", color: "#fb7185", fontWeight: "700" }}>🔒 READ-ONLY</span>
-                  )}
-                  {activeUser?.role === "ENGINEER" && (
-                    <span style={{ fontSize: "10px", color: "#38bdf8", fontWeight: "700" }}>🛠️ ENGINEER</span>
-                  )}
-                  {(activeUser?.role === "MANAGER" || activeUser?.role === "SUPER_ADMIN" || activeUser?.role === "ADMIN") && (
-                    <span style={{ fontSize: "10px", color: "#34d399", fontWeight: "700" }}>✓ FULL CONTROL</span>
+                    <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>Read-only</span>
                   )}
                 </div>
                 <select
@@ -2545,40 +2481,35 @@ export default function WorkMateEnterpriseApp() {
                   value={selectedIssue.status}
                   disabled={activeUser?.role === "USER"}
                   onChange={(e) => handleUpdateStatus(selectedIssue.id, e.target.value as IssueStatus)}
-                  title={activeUser?.role === "USER" ? "Reporters cannot alter technical workflow status" : "Update ticket workflow state"}
-                  style={{ opacity: activeUser?.role === "USER" ? 0.6 : 1, cursor: activeUser?.role === "USER" ? "not-allowed" : "pointer" }}
+                  title={activeUser?.role === "USER" ? "Reporters cannot alter status directly" : "Update ticket status"}
+                  style={{ opacity: activeUser?.role === "USER" ? 0.7 : 1, cursor: activeUser?.role === "USER" ? "not-allowed" : "pointer" }}
                 >
-                  <option value="OPEN">Open (Unassigned)</option>
-                  <option value="ASSIGNED">Assigned to Lead</option>
-                  <option value="IN_PROGRESS">In Remediation</option>
+                  <option value="OPEN">Open</option>
+                  <option value="ASSIGNED">Assigned</option>
+                  <option value="IN_PROGRESS">In Progress</option>
                   <option value="RESOLVED">Resolved</option>
                   <option 
                     value="CLOSED" 
                     disabled={activeUser?.role === "ENGINEER"}
                   >
-                    Closed & Verified {activeUser?.role === "ENGINEER" ? "(Manager Approval Required)" : ""}
+                    Closed {activeUser?.role === "ENGINEER" ? "(Manager Approval Required)" : ""}
                   </option>
                 </select>
                 {activeUser?.role === "USER" && (
-                  <div style={{ fontSize: "11px", color: "#fb7185", marginTop: "4px" }}>
-                    🔒 Workflow status can only be advanced by Assigned Engineers or Squad Leads.
+                  <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "4px" }}>
+                    Status is updated by assigned staff or engineers.
                   </div>
                 )}
                 {activeUser?.role === "ENGINEER" && (
-                  <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-                    ℹ️ Marking as "Closed & Verified" requires Manager/SuperAdmin sign-off.
+                  <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "4px" }}>
+                    Closing tickets requires manager sign-off.
                   </div>
                 )}
               </div>
 
               <div className="form-group" style={{ margin: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                  <label className="form-label" style={{ margin: 0 }}>Assigned Specialist</label>
-                  {activeUser?.role !== "SUPER_ADMIN" && activeUser?.role !== "ADMIN" && activeUser?.role !== "MANAGER" ? (
-                    <span style={{ fontSize: "10px", color: "#fb7185", fontWeight: "700" }}>🔒 LOCKED</span>
-                  ) : (
-                    <span style={{ fontSize: "10px", color: "#34d399", fontWeight: "700" }}>✓ LEAD / ADMIN</span>
-                  )}
+                  <label className="form-label" style={{ margin: 0 }}>Assignee</label>
                 </div>
                 <select
                   className="form-select"
@@ -2586,12 +2517,12 @@ export default function WorkMateEnterpriseApp() {
                   disabled={activeUser?.role !== "SUPER_ADMIN" && activeUser?.role !== "ADMIN" && activeUser?.role !== "MANAGER"}
                   onChange={(e) => handleAssignTicket(selectedIssue.id, e.target.value)}
                   style={{
-                    opacity: activeUser?.role !== "SUPER_ADMIN" && activeUser?.role !== "ADMIN" && activeUser?.role !== "MANAGER" ? 0.6 : 1,
+                    opacity: activeUser?.role !== "SUPER_ADMIN" && activeUser?.role !== "ADMIN" && activeUser?.role !== "MANAGER" ? 0.7 : 1,
                     cursor: activeUser?.role !== "SUPER_ADMIN" && activeUser?.role !== "ADMIN" && activeUser?.role !== "MANAGER" ? "not-allowed" : "pointer",
                   }}
-                  title={activeUser?.role !== "SUPER_ADMIN" && activeUser?.role !== "ADMIN" && activeUser?.role !== "MANAGER" ? "Specialist reassignment requires Manager or SuperAdmin clearance" : "Reassign ticket specialist"}
+                  title={activeUser?.role !== "SUPER_ADMIN" && activeUser?.role !== "ADMIN" && activeUser?.role !== "MANAGER" ? "Reassigning requires manager or admin permissions" : "Reassign ticket"}
                 >
-                  <option value="">Unassigned (Department Pool)</option>
+                  <option value="">Unassigned</option>
                   {users.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.name} ({u.role} - {u.department})
@@ -2599,8 +2530,8 @@ export default function WorkMateEnterpriseApp() {
                   ))}
                 </select>
                 {activeUser?.role !== "SUPER_ADMIN" && activeUser?.role !== "ADMIN" && activeUser?.role !== "MANAGER" && (
-                  <div style={{ fontSize: "11px", color: "#fb7185", marginTop: "4px" }}>
-                    🔒 Specialist reassignment requires Squad Lead (Manager) or SuperAdmin clearance.
+                  <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "4px" }}>
+                    Reassignment is managed by team leads and admins.
                   </div>
                 )}
               </div>
@@ -2609,15 +2540,15 @@ export default function WorkMateEnterpriseApp() {
             {/* Comments Thread */}
             <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px" }}>
               <h3 style={{ fontSize: "14px", fontWeight: "700", marginBottom: "12px" }}>
-                Collaboration & Updates ({selectedIssue.comments?.length || 0})
+                Comments & Updates ({selectedIssue.comments?.length || 0})
               </h3>
 
               <div style={{ maxHeight: "180px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>
                 {selectedIssue.comments?.map((c) => (
-                  <div key={c.id} style={{ background: c.isAiGenerated ? "rgba(168, 85, 247, 0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${c.isAiGenerated ? "rgba(168, 85, 247, 0.25)" : "var(--border-subtle)"}`, borderRadius: "10px", padding: "10px 12px" }}>
+                  <div key={c.id} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: "8px", padding: "10px 12px" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px", fontSize: "11px", color: "var(--text-dim)" }}>
-                      <span style={{ fontWeight: "700", color: c.isAiGenerated ? "#c084fc" : "#fff" }}>
-                        {c.isAiGenerated ? "🤖 WorkMate AI Advisory" : c.author?.name || "Engineer"}
+                      <span style={{ fontWeight: "700", color: c.isAiGenerated ? "#93c5fd" : "#fff" }}>
+                        {c.isAiGenerated ? "🤖 AI Assistant" : c.author?.name || "Staff"}
                       </span>
                       <span>{new Date(c.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                     </div>
@@ -2648,9 +2579,9 @@ export default function WorkMateEnterpriseApp() {
           <div className="modal-content" style={{ maxWidth: "780px" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
-                <h2 className="modal-title">🎫 Log New Incident / Ticket</h2>
+                <h2 className="modal-title">Create New Ticket</h2>
                 <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
-                  Select an affected project/application or let WorkMate AI auto-triage from your stacktrace.
+                  Select an affected service (optional) and describe the issue.
                 </p>
               </div>
               <button className="close-btn" onClick={() => setIsNewTicketOpen(false)}>✕</button>
@@ -2661,9 +2592,9 @@ export default function WorkMateEnterpriseApp() {
               <div className="form-group" style={{ marginBottom: "18px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
                   <label className="form-label" style={{ margin: 0, display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>🖥️ Target Application / Monitored Project *</span>
+                    <span>Service or Application (Optional)</span>
                     <span style={{ fontSize: "11px", color: "var(--accent-cyan)", fontWeight: "600" }}>
-                      ({services.length} Dynamic Projects)
+                      ({services.length} registered)
                     </span>
                   </label>
                   <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
@@ -2672,10 +2603,10 @@ export default function WorkMateEnterpriseApp() {
                         type="button"
                         onClick={handleOpenCreateService}
                         className="btn btn-secondary"
-                        style={{ padding: "3px 10px", fontSize: "11px", borderColor: "rgba(168, 85, 247, 0.5)", color: "#c084fc", fontWeight: "700" }}
-                        title="Add a new project directly from ticket screen"
+                        style={{ padding: "3px 10px", fontSize: "11px", fontWeight: "600" }}
+                        title="Add a new service"
                       >
-                        👑 + Add Project
+                        + Add Service
                       </button>
                     )}
                     <button
@@ -2684,7 +2615,7 @@ export default function WorkMateEnterpriseApp() {
                       className={`btn ${projectSelectMode === "cards" ? "btn-primary" : "btn-secondary"}`}
                       style={{ padding: "3px 10px", fontSize: "11px" }}
                     >
-                      🎴 Visual Project Cards
+                      Cards
                     </button>
                     <button
                       type="button"
@@ -2692,7 +2623,7 @@ export default function WorkMateEnterpriseApp() {
                       className={`btn ${projectSelectMode === "dropdown" ? "btn-primary" : "btn-secondary"}`}
                       style={{ padding: "3px 10px", fontSize: "11px" }}
                     >
-                      📋 Quick Dropdown
+                      Dropdown
                     </button>
                   </div>
                 </div>
@@ -2705,16 +2636,13 @@ export default function WorkMateEnterpriseApp() {
                       className={`project-card ${!ticketForm.serviceAssetId ? "selected" : ""}`}
                       onClick={() => handleSelectServiceForTicket("")}
                     >
-                      {!ticketForm.serviceAssetId && <span className="check-pill">✓ AUTO-DETECT</span>}
+                      {!ticketForm.serviceAssetId && <span className="check-pill">Auto</span>}
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
                         <span style={{ fontSize: "18px" }}>🤖</span>
-                        <strong style={{ fontSize: "13px", color: "#fff" }}>AI Auto-Detect</strong>
+                        <strong style={{ fontSize: "13px", color: "#fff" }}>Auto-Detect</strong>
                       </div>
                       <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: "1.3" }}>
-                        Neural recognition from error logs, URLs & stacktrace
-                      </div>
-                      <div style={{ marginTop: "8px", display: "flex", gap: "6px" }}>
-                        <span className="badge badge-assigned" style={{ fontSize: "9px" }}>✨ Auto-SLA & Squad</span>
+                        Matches service automatically from description
                       </div>
                     </div>
 
@@ -2729,7 +2657,7 @@ export default function WorkMateEnterpriseApp() {
                           onClick={() => handleSelectServiceForTicket(s.id)}
                           style={{ position: "relative" }}
                         >
-                          {isSelected && <span className="check-pill">✓ SELECTED</span>}
+                          {isSelected && <span className="check-pill">Selected</span>}
 
                           {/* SuperAdmin Quick Edit Button */}
                           {activeUser?.role === "SUPER_ADMIN" && (
@@ -2739,13 +2667,13 @@ export default function WorkMateEnterpriseApp() {
                                 e.stopPropagation();
                                 handleOpenEditService(s);
                               }}
-                              title="Rename / Edit this project"
+                              title="Edit service details"
                               style={{
                                 position: "absolute",
                                 top: "8px",
-                                right: isSelected ? "88px" : "8px",
-                                background: "rgba(255,255,255,0.08)",
-                                border: "1px solid rgba(255,255,255,0.18)",
+                                right: isSelected ? "75px" : "8px",
+                                background: "var(--bg-surface)",
+                                border: "1px solid var(--border-subtle)",
                                 borderRadius: "4px",
                                 color: "#cbd5e1",
                                 cursor: "pointer",
@@ -2773,15 +2701,15 @@ export default function WorkMateEnterpriseApp() {
                                 fontSize: "9px",
                                 padding: "1px 6px",
                                 borderRadius: "4px",
-                                background: s.healthStatus === "OPERATIONAL" ? "rgba(52, 211, 153, 0.2)" : "rgba(251, 191, 36, 0.2)",
+                                background: s.healthStatus === "OPERATIONAL" ? "rgba(52, 211, 153, 0.15)" : "rgba(251, 191, 36, 0.15)",
                                 color: s.healthStatus === "OPERATIONAL" ? "#34d399" : "#fbbf24",
-                                fontWeight: "700",
+                                fontWeight: "600",
                               }}
                             >
                               ● {s.healthStatus}
                             </span>
                             <span style={{ fontSize: "10px", color: "var(--accent-cyan)", fontWeight: "600" }}>
-                              ⚡ {s.slaTargetMins}m SLA
+                              {s.slaTargetMins}m SLA
                             </span>
                           </div>
                         </div>
@@ -2795,19 +2723,19 @@ export default function WorkMateEnterpriseApp() {
                         onClick={handleOpenCreateService}
                         style={{
                           borderStyle: "dashed",
-                          borderColor: "rgba(168, 85, 247, 0.45)",
-                          background: "rgba(168, 85, 247, 0.06)",
+                          borderColor: "var(--border-subtle)",
+                          background: "var(--bg-surface)",
                           display: "flex",
                           flexDirection: "column",
                           justifyContent: "center",
                           alignItems: "center",
-                          minHeight: "90px",
+                          minHeight: "85px",
                           cursor: "pointer",
                         }}
                       >
-                        <span style={{ fontSize: "18px", marginBottom: "2px" }}>👑 ➕</span>
-                        <strong style={{ fontSize: "12px", color: "#c084fc" }}>+ Add New Project</strong>
-                        <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>SuperAdmin Authority</span>
+                        <span style={{ fontSize: "18px", marginBottom: "2px" }}>➕</span>
+                        <strong style={{ fontSize: "12px", color: "#93c5fd" }}>+ Add Service</strong>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>Admin action</span>
                       </div>
                     )}
                   </div>
@@ -2820,10 +2748,10 @@ export default function WorkMateEnterpriseApp() {
                       onChange={(e) => handleSelectServiceForTicket(e.target.value)}
                       style={{ fontSize: "13px", padding: "10px 12px" }}
                     >
-                      <option value="">✨ Auto-Recognize with WorkMate AI (From Title & Error Logs)</option>
+                      <option value="">✨ Auto-Detect with AI (from description)</option>
                       {services.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {getServiceIcon(s.slug || s.type)} {s.name} — {s.department} ({s.slaTargetMins}m SLA Target)
+                          {getServiceIcon(s.slug || s.type)} {s.name} — {s.department} ({s.slaTargetMins}m SLA)
                         </option>
                       ))}
                     </select>
@@ -2839,9 +2767,9 @@ export default function WorkMateEnterpriseApp() {
                       <div style={{
                         marginTop: "10px",
                         padding: "8px 14px",
-                        background: "linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(6, 182, 212, 0.1))",
-                        border: "1px solid rgba(99, 102, 241, 0.35)",
-                        borderRadius: "10px",
+                        background: "var(--bg-surface)",
+                        border: "1px solid var(--border-subtle)",
+                        borderRadius: "8px",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
@@ -2851,16 +2779,16 @@ export default function WorkMateEnterpriseApp() {
                       }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                           <span>{getServiceIcon(activeService.slug || activeService.type)}</span>
-                          <strong style={{ color: "#fff" }}>Target: {activeService.name}</strong>
+                          <strong style={{ color: "#fff" }}>Selected: {activeService.name}</strong>
                           <span className="badge badge-assigned" style={{ fontSize: "10px" }}>{activeService.department}</span>
-                          <span style={{ color: "#38bdf8", fontSize: "11px", fontWeight: "700" }}>⚡ {activeService.slaTargetMins}m Target SLA</span>
+                          <span style={{ color: "var(--accent-cyan)", fontSize: "11px", fontWeight: "600" }}>{activeService.slaTargetMins}m Target SLA</span>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleSelectServiceForTicket("")}
                           style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "11px", textDecoration: "underline" }}
                         >
-                          Clear (Switch to Auto-Detect)
+                          Clear
                         </button>
                       </div>
                     );
@@ -2868,16 +2796,16 @@ export default function WorkMateEnterpriseApp() {
                 ) : null}
               </div>
 
-              {/* 2. INCIDENT TITLE & DETAILS */}
+              {/* 2. TICKET TITLE & DETAILS */}
               <div className="form-group">
-                <label className="form-label">Incident Title / Symptom</label>
+                <label className="form-label">Ticket Title *</label>
                 <input
                   type="text"
                   className="form-input"
                   placeholder={
                     ticketForm.serviceAssetId
-                      ? `e.g. Incident observed on ${services.find((s) => s.id === ticketForm.serviceAssetId)?.name || "selected application"}...`
-                      : "e.g. 504 Gateway Timeout during checkout on /api/v1/billing"
+                      ? `e.g. Issue observed on ${services.find((s) => s.id === ticketForm.serviceAssetId)?.name || "service"}...`
+                      : "e.g. 504 Gateway Timeout on checkout or login page error"
                   }
                   value={ticketForm.title}
                   onChange={(e) => setTicketForm({ ...ticketForm, title: e.target.value })}
@@ -2887,13 +2815,13 @@ export default function WorkMateEnterpriseApp() {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div className="form-group">
-                  <label className="form-label">Responsible Engineering Squad</label>
+                  <label className="form-label">Department</label>
                   <select
                     className="form-select"
                     value={ticketForm.department}
                     onChange={(e) => setTicketForm({ ...ticketForm, department: e.target.value })}
                   >
-                    <option value="">✨ Auto-Route with WorkMate AI</option>
+                    <option value="">✨ Auto-Assign with AI</option>
                     <option value="Backend & Core APIs">Backend & Core APIs</option>
                     <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
                     <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
@@ -2903,7 +2831,7 @@ export default function WorkMateEnterpriseApp() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Priority Assessment</label>
+                  <label className="form-label">Priority</label>
                   <select
                     className="form-select"
                     value={ticketForm.priority}
@@ -2912,20 +2840,20 @@ export default function WorkMateEnterpriseApp() {
                     <option value="LOW">Low</option>
                     <option value="MEDIUM">Medium</option>
                     <option value="HIGH">High</option>
-                    <option value="URGENT">Urgent (Immediate SLA)</option>
+                    <option value="URGENT">Urgent</option>
                   </select>
                 </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div className="form-group">
-                  <label className="form-label">Assign Lead / Specialist</label>
+                  <label className="form-label">Assignee (Optional)</label>
                   <select
                     className="form-select"
                     value={ticketForm.assigneeId}
                     onChange={(e) => setTicketForm({ ...ticketForm, assigneeId: e.target.value })}
                   >
-                    <option value="">✨ Auto-Assign Lead with AI</option>
+                    <option value="">✨ Auto-Assign with AI</option>
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name} ({u.role} - {u.department})
@@ -2935,11 +2863,11 @@ export default function WorkMateEnterpriseApp() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Affected Endpoint / URL</label>
+                  <label className="form-label">Affected URL / Location (Optional)</label>
                   <input
                     type="text"
                     className="form-input"
-                    placeholder="e.g. https://api.workmate.ai/v1/billing or /analytics"
+                    placeholder="e.g. https://example.com/checkout or /dashboard"
                     value={ticketForm.affectedUrl}
                     onChange={(e) => setTicketForm({ ...ticketForm, affectedUrl: e.target.value })}
                   />
@@ -2947,10 +2875,10 @@ export default function WorkMateEnterpriseApp() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Detailed Symptoms, Error Logs & Stacktrace</label>
+                <label className="form-label">Description & Details *</label>
                 <textarea
                   className="form-textarea"
-                  placeholder="Paste stacktrace, affected URL endpoint, HTTP status code, or observed error symptoms..."
+                  placeholder="Describe the issue, error messages, or steps to reproduce..."
                   value={ticketForm.description}
                   onChange={(e) => setTicketForm({ ...ticketForm, description: e.target.value })}
                   required
@@ -2965,15 +2893,15 @@ export default function WorkMateEnterpriseApp() {
                   onChange={(e) => setTicketForm({ ...ticketForm, runAiTriage: e.target.checked })}
                   style={{ width: "18px", height: "18px", accentColor: "var(--accent-primary)" }}
                 />
-                <label htmlFor="autoAiCheck" style={{ fontSize: "13px", color: "#e9d5ff", cursor: "pointer" }}>
-                  ✨ WorkMate AI Auto-Pilot: Recognize application, set SLA deadline, and generate technical remediation checklist
+                <label htmlFor="autoAiCheck" style={{ fontSize: "13px", color: "var(--text-main)", cursor: "pointer" }}>
+                  ✨ Generate AI summary and recommended troubleshooting steps
                 </label>
               </div>
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
                 <button className="btn btn-secondary" type="button" onClick={() => setIsNewTicketOpen(false)}>Cancel</button>
                 <button className="btn btn-primary" type="submit" disabled={actionLoading}>
-                  {actionLoading ? "Processing..." : "Submit Incident"}
+                  {actionLoading ? "Creating..." : "Create Ticket"}
                 </button>
               </div>
             </form>
@@ -2981,18 +2909,18 @@ export default function WorkMateEnterpriseApp() {
         </div>
       )}
 
-      {/* MODAL 3: ENTERPRISE AUTHENTICATION & LOGIN PORTAL */}
+      {/* MODAL 3: AUTHENTICATION & LOGIN */}
       {isAuthModalOpen && (
         <div className="modal-overlay" onClick={() => activeUser && setIsAuthModalOpen(false)}>
           <div className="modal-content" style={{ maxWidth: "680px" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
                 <h2 className="modal-title">
-                  {!activeUser ? "🔐 Sign In to WorkMate AI" : "⚡ Account & Identity Hub"}
+                  {!activeUser ? "Sign In to WorkMate" : "Account & Profile"}
                 </h2>
                 <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
                   {!activeUser
-                    ? "Enter your registered corporate email to access your role-based ticketing desk."
+                    ? "Enter your email to sign in or choose an account."
                     : `Logged in as ${activeUser.name} (${activeUser.role}). Switch accounts or edit your profile.`}
                 </p>
               </div>
@@ -3000,7 +2928,7 @@ export default function WorkMateEnterpriseApp() {
                 <button
                   className="close-btn"
                   onClick={() => setIsAuthModalOpen(false)}
-                  title="Close modal"
+                  title="Close"
                 >
                   ✕
                 </button>
@@ -3013,20 +2941,20 @@ export default function WorkMateEnterpriseApp() {
                 className={`auth-tab ${authTab === "login" ? "active" : ""}`}
                 onClick={() => setAuthTab("login")}
               >
-                🔑 Sign In with Email
+                Sign In
               </button>
               <button
                 className={`auth-tab ${authTab === "switch" ? "active" : ""}`}
                 onClick={() => setAuthTab("switch")}
               >
-                👥 Team Directory ({users.length})
+                Choose Account ({users.length})
               </button>
               {(!activeUser || activeUser.role === "SUPER_ADMIN" || users.length === 0) && (
                 <button
                   className={`auth-tab ${authTab === "register" ? "active" : ""}`}
                   onClick={() => setAuthTab("register")}
                 >
-                  👑 + Register Member
+                  + Add Member
                 </button>
               )}
               {activeUser && (
@@ -3034,7 +2962,7 @@ export default function WorkMateEnterpriseApp() {
                   className={`auth-tab ${authTab === "profile" ? "active" : ""}`}
                   onClick={() => handleOpenEditProfile()}
                 >
-                  ✏️ My Profile
+                  My Profile
                 </button>
               )}
             </div>
@@ -3045,14 +2973,14 @@ export default function WorkMateEnterpriseApp() {
                 <form onSubmit={handleEmailLogin} style={{ marginBottom: "20px" }}>
                   <div className="form-group" style={{ marginBottom: "14px" }}>
                     <label className="form-label" style={{ fontSize: "13px", fontWeight: "700" }}>
-                      Work Email Address *
+                      Email Address *
                     </label>
                     <div style={{ position: "relative" }}>
                       <input
                         type="email"
                         className="form-input"
                         style={{ paddingLeft: "38px", fontSize: "14px", height: "46px" }}
-                        placeholder="e.g. gankitoshgupta52@gmail.com, gaashutoshgupta52@gmail.com..."
+                        placeholder="Enter your email address"
                         value={loginEmail}
                         onChange={(e) => {
                           setLoginEmail(e.target.value);

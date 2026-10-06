@@ -9,7 +9,7 @@ export const storage = {
       if (typeof window !== "undefined" && window.localStorage) {
         return window.localStorage.getItem(key);
       }
-    } catch (_) {}
+    } catch {}
     return memoryCache[key] ?? null;
   },
   setItem: (key: string, value: string): void => {
@@ -17,7 +17,7 @@ export const storage = {
       if (typeof window !== "undefined" && window.localStorage) {
         window.localStorage.setItem(key, value);
       }
-    } catch (_) {}
+    } catch {}
     memoryCache[key] = value;
   },
   removeItem: (key: string): void => {
@@ -25,7 +25,7 @@ export const storage = {
       if (typeof window !== "undefined" && window.localStorage) {
         window.localStorage.removeItem(key);
       }
-    } catch (_) {}
+    } catch {}
     delete memoryCache[key];
   },
 };
