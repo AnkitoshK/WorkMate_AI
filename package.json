@@ -4,7 +4,8 @@
   "private": true,
   "packageManager": "pnpm@10.6.5",
   "scripts": {
-    "start": "pnpm dev:all",
+    "start": "pnpm --filter @workmate/api start",
+    "build": "pnpm --filter @workmate/api build",
     "dev": "concurrently -n \"api,web\" -c \"cyan,magenta\" \"pnpm dev:api\" \"pnpm dev:web\"",
     "dev:all": "concurrently -n \"api,web,mobile\" -c \"cyan,magenta,yellow\" \"pnpm dev:api\" \"pnpm dev:web\" \"pnpm dev:mobile\"",
     "dev:api": "pnpm --filter @workmate/api dev",
