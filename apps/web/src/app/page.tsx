@@ -170,6 +170,28 @@ export interface ActionToast {
   time: string;
 }
 
+export interface ActionModalAlert {
+  isOpen: boolean;
+  type: "success" | "info" | "warning" | "error";
+  title: string;
+  message: string;
+  actionKind: "RAISE" | "CLOSE" | "RESOLVE" | "REASSIGN" | "USER" | "TASK" | "SERVICE" | "GENERAL";
+  ticketNumber?: number;
+  details?: Array<{ label: string; value: string }>;
+}
+
+export interface AiDetailedExplanation {
+  query: string;
+  headline: string;
+  category: string;
+  overview: string;
+  rootCauses: string[];
+  stepByStepRemediation: string[];
+  codeSnippetOrCommands?: string;
+  proTipsAndBestPractices?: string[];
+  generatedAt?: string;
+}
+
 export interface AttendanceRecord {
   id: string;
   userId?: string | null;
@@ -189,6 +211,21 @@ export default function WorkMateEnterpriseApp() {
   // Navigation
   const [activeTab, setActiveTab] = useState<"dashboard" | "tickets" | "closed-history" | "attendance" | "services" | "team" | "tasks" | "ai">("dashboard");
   const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban");
+
+  // Interactive Action Modal Popup (Center Message Box for Form Submissions & Tasks)
+  const [actionModal, setActionModal] = useState<ActionModalAlert>({
+    isOpen: false,
+    type: "success",
+    title: "",
+    message: "",
+    actionKind: "GENERAL",
+  });
+
+  // AI Copilot Query State for Home Page
+  const [aiQueryInput, setAiQueryInput] = useState("");
+  const [aiQueryLoading, setAiQueryLoading] = useState(false);
+  const [aiQueryResult, setAiQueryResult] = useState<AiDetailedExplanation | null>(null);
+  const [aiCopilotError, setAiCopilotError] = useState("");
 
   // Interactive Action Notifications (Toasts / Popups)
   const [toasts, setToasts] = useState<ActionToast[]>([]);
@@ -333,6 +370,29 @@ export default function WorkMateEnterpriseApp() {
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  // Action Center Modal Popup Trigger (For Form Submissions, Ticket Actions & Tasks)
+  const triggerActionModal = useCallback(
+    (
+      type: "success" | "info" | "warning" | "error",
+      title: string,
+      message: string,
+      actionKind: "RAISE" | "CLOSE" | "RESOLVE" | "REASSIGN" | "USER" | "TASK" | "SERVICE" | "GENERAL" = "GENERAL",
+      ticketNumber?: number,
+      details?: Array<{ label: string; value: string }>
+    ) => {
+      setActionModal({
+        isOpen: true,
+        type,
+        title,
+        message,
+        actionKind,
+        ticketNumber,
+        details,
+      });
+    },
+    []
+  );
 
   // Fetch Attendance Logs
   const fetchAttendanceLogs = useCallback(async () => {
@@ -762,8 +822,20 @@ export default function WorkMateEnterpriseApp() {
       if (typeof window !== "undefined") {
         localStorage.setItem("workmate_active_user_id", updatedUser.id);
       }
-      alert(`✓ Profile updated successfully!`);
       setIsAuthModalOpen(false);
+      triggerActionModal(
+        "success",
+        "Profile Updated Successfully!",
+        `Your user profile details have been saved to your active session.`,
+        "GENERAL",
+        undefined,
+        [
+          { label: "User Name", value: updatedUser.name },
+          { label: "Email Address", value: updatedUser.email },
+          { label: "Role", value: updatedUser.role },
+          { label: "Department", value: updatedUser.department || "Operations" },
+        ]
+      );
     } catch (err: any) {
       alert("❌ " + err.message);
     } finally {
@@ -893,6 +965,22 @@ export default function WorkMateEnterpriseApp() {
         createdTicket.ticketNumber
       );
 
+      triggerActionModal(
+        "success",
+        "Ticket Successfully Raised!",
+        `Incident #TIK-${String(createdTicket.ticketNumber).padStart(3, "0")} ("${createdTicket.title}") has been registered in the system and queued for ${createdTicket.department || "Operations"} squad.`,
+        "RAISE",
+        createdTicket.ticketNumber,
+        [
+          { label: "Ticket Number", value: `#TIK-${String(createdTicket.ticketNumber).padStart(3, "0")}` },
+          { label: "Incident Title", value: createdTicket.title },
+          { label: "Priority", value: createdTicket.priority },
+          { label: "Category", value: createdTicket.category },
+          { label: "Assigned Squad", value: createdTicket.department || "Operations" },
+          { label: "Initial Status", value: createdTicket.status },
+        ]
+      );
+
       setIsNewTicketOpen(false);
       setTicketForm({
         title: "",
@@ -967,7 +1055,19 @@ export default function WorkMateEnterpriseApp() {
       });
       await refreshAllData();
       handleLoginAs(data);
-      alert(`✓ Team member "${data.name}" created with role "${data.role}"!\nYou are now logged in as ${data.name}.`);
+      triggerActionModal(
+        "success",
+        "New Team Member Created!",
+        `Team member "${data.name}" has been registered with role "${data.role}" in "${assignedDept}". You are now logged in as ${data.name}.`,
+        "USER",
+        undefined,
+        [
+          { label: "Member Name", value: data.name },
+          { label: "Email Address", value: data.email },
+          { label: "Assigned Role", value: data.role },
+          { label: "Department", value: assignedDept },
+        ]
+      );
     } catch (err: any) {
       alert("❌ " + err.message);
     } finally {
@@ -1059,8 +1159,24 @@ export default function WorkMateEnterpriseApp() {
         urlOrLocation: "",
         description: "",
       });
+      const savedName = serviceForm.name;
+      const savedSlug = serviceForm.slug;
+      const savedEnv = serviceForm.environment;
+      const savedSla = serviceForm.slaTargetMins;
       await refreshAllData();
-      alert(isEdit ? `✓ Project "${serviceForm.name}" updated successfully!` : `✓ Project "${serviceForm.name}" registered in catalog!`);
+      triggerActionModal(
+        "success",
+        isEdit ? "Project Asset Updated!" : "New Project Asset Registered!",
+        `Service asset "${savedName}" has been successfully configured in the system catalog.`,
+        "SERVICE",
+        undefined,
+        [
+          { label: "Project Name", value: savedName },
+          { label: "Identifier Slug", value: savedSlug },
+          { label: "Target Environment", value: savedEnv },
+          { label: "SLA Resolution Target", value: `${savedSla} mins` },
+        ]
+      );
     } catch (err: any) {
       alert("❌ " + err.message);
     } finally {
@@ -1172,6 +1288,20 @@ export default function WorkMateEnterpriseApp() {
             "CLOSE",
             updated.ticketNumber
           );
+          triggerActionModal(
+            "info",
+            "Ticket Closed & Archived!",
+            `Incident "${updated.title}" (${ticketNumStr}) has been closed and safely moved to the Closed History Archive.`,
+            "CLOSE",
+            updated.ticketNumber,
+            [
+              { label: "Ticket Number", value: ticketNumStr },
+              { label: "Incident Title", value: updated.title },
+              { label: "Final Status", value: "CLOSED" },
+              { label: "Closed By", value: activeUser.name },
+              { label: "Audit Destination", value: "Closed History Archive Tab" },
+            ]
+          );
         } else if (status === "RESOLVED") {
           triggerToast(
             "success",
@@ -1179,6 +1309,20 @@ export default function WorkMateEnterpriseApp() {
             `"${updated.title}" marked as RESOLVED. Pending manager review.`,
             "RESOLVE",
             updated.ticketNumber
+          );
+          triggerActionModal(
+            "success",
+            "Ticket Marked as Resolved!",
+            `Incident "${updated.title}" (${ticketNumStr}) has been marked as RESOLVED by ${activeUser.name}. Awaiting lead review for final archiving.`,
+            "RESOLVE",
+            updated.ticketNumber,
+            [
+              { label: "Ticket Number", value: ticketNumStr },
+              { label: "Incident Title", value: updated.title },
+              { label: "Status", value: "RESOLVED" },
+              { label: "Resolved By", value: activeUser.name },
+              { label: "Timestamp", value: new Date().toLocaleTimeString() },
+            ]
           );
         } else if (status === "IN_PROGRESS") {
           triggerToast(
@@ -1188,6 +1332,19 @@ export default function WorkMateEnterpriseApp() {
             "GENERAL",
             updated.ticketNumber
           );
+          triggerActionModal(
+            "info",
+            "Ticket In Progress!",
+            `Remediation has begun on "${updated.title}" (${ticketNumStr}).`,
+            "GENERAL",
+            updated.ticketNumber,
+            [
+              { label: "Ticket Number", value: ticketNumStr },
+              { label: "Incident Title", value: updated.title },
+              { label: "Status", value: "IN_PROGRESS" },
+              { label: "Specialist", value: activeUser.name },
+            ]
+          );
         } else {
           triggerToast(
             "info",
@@ -1195,6 +1352,19 @@ export default function WorkMateEnterpriseApp() {
             `Status updated to ${status}.`,
             "GENERAL",
             updated.ticketNumber
+          );
+          triggerActionModal(
+            "info",
+            `Ticket Status Updated to ${status}`,
+            `Incident "${updated.title}" (${ticketNumStr}) status set to ${status}.`,
+            "GENERAL",
+            updated.ticketNumber,
+            [
+              { label: "Ticket Number", value: ticketNumStr },
+              { label: "Incident Title", value: updated.title },
+              { label: "Updated Status", value: status },
+              { label: "Updated By", value: activeUser.name },
+            ]
           );
         }
       }
@@ -1233,6 +1403,19 @@ export default function WorkMateEnterpriseApp() {
           `Assigned to ${assigneeLabel}.`,
           "REASSIGN",
           updated.ticketNumber
+        );
+        triggerActionModal(
+          "info",
+          "Ticket Reassigned Successfully!",
+          `Incident ${ticketNumStr} ("${updated.title}") has been assigned to specialist ${assigneeLabel}.`,
+          "REASSIGN",
+          updated.ticketNumber,
+          [
+            { label: "Ticket Number", value: ticketNumStr },
+            { label: "Incident Title", value: updated.title },
+            { label: "New Specialist", value: assigneeLabel },
+            { label: "Updated Status", value: updated.status },
+          ]
         );
       }
     } catch (err) {
@@ -1352,6 +1535,19 @@ export default function WorkMateEnterpriseApp() {
         `Task "${taskForm.title}" added to active sprint list.`,
         "TASK"
       );
+      triggerActionModal(
+        "success",
+        "Work Order / Task Created!",
+        `Task "${taskForm.title}" has been registered in the system sprint.`,
+        "TASK",
+        undefined,
+        [
+          { label: "Task Title", value: taskForm.title },
+          { label: "Category", value: taskForm.category || "Maintenance" },
+          { label: "Assigned To", value: activeUser.name },
+          { label: "Priority Level", value: `P${taskForm.priority}` },
+        ]
+      );
       setTaskForm({ title: "", description: "", priority: 2, category: "Maintenance", issueId: "", dueDate: "" });
       await refreshAllData();
     } catch (err: any) {
@@ -1380,6 +1576,40 @@ export default function WorkMateEnterpriseApp() {
       console.error(err);
     } finally {
       setAiAnalyzing(false);
+    }
+  };
+
+  // Ask AI Operations Copilot for Deep Technical Guidance
+  const handleAskAiCopilot = async (overrideQuery?: string) => {
+    const queryToAsk = (overrideQuery || aiQueryInput).trim();
+    if (!queryToAsk) return;
+    try {
+      setAiQueryLoading(true);
+      setAiCopilotError("");
+      const res = await fetch(`${API_BASE}/api/ai/query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: queryToAsk,
+          context: {
+            activeUser: activeUser?.name,
+            activeRole: activeUser?.role,
+            totalIssues: issues.length,
+            activeServices: services.map((s) => s.name).join(", "),
+          },
+        }),
+      });
+      if (!res.ok) {
+        throw new Error("AI query service encountered an issue. Please try again.");
+      }
+      const data: AiDetailedExplanation = await res.json();
+      setAiQueryResult(data);
+      setAiQueryInput(queryToAsk);
+    } catch (err: any) {
+      console.error("AI query error:", err);
+      setAiCopilotError(err.message || "Failed to retrieve AI explanation.");
+    } finally {
+      setAiQueryLoading(false);
     }
   };
 
@@ -1804,6 +2034,211 @@ export default function WorkMateEnterpriseApp() {
                 <span>{stats?.overview.doneTasks ?? 0} of {stats?.overview.totalTasks ?? 0} tasks finished</span>
               </div>
             </div>
+          </div>
+
+          {/* Interactive AI Operations Copilot (Deep Technical Advisor & Troubleshooting) */}
+          <div className="ai-copilot-card">
+            <div className="ai-copilot-header">
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{
+                  width: "38px",
+                  height: "38px",
+                  borderRadius: "10px",
+                  background: "linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(168, 85, 247, 0.2))",
+                  border: "1px solid rgba(147, 197, 253, 0.3)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "20px"
+                }}>
+                  ✨
+                </div>
+                <div>
+                  <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#f8fafc", margin: 0 }}>
+                    WorkMate AI Operations Copilot
+                  </h3>
+                  <p style={{ fontSize: "12px", color: "#94a3b8", margin: 0 }}>
+                    Ask technical queries, root cause diagnoses, code solutions, or workflow guidance.
+                  </p>
+                </div>
+              </div>
+              <span className="badge" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#34d399", border: "1px solid rgba(16, 185, 129, 0.3)", fontSize: "11px" }}>
+                ● Online · Domain Intelligence
+              </span>
+            </div>
+
+            {/* Query Bar */}
+            <div className="ai-query-bar">
+              <span style={{ fontSize: "16px", opacity: 0.7 }}>🔍</span>
+              <input
+                type="text"
+                className="ai-query-input"
+                value={aiQueryInput}
+                onChange={(e) => setAiQueryInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleAskAiCopilot();
+                  }
+                }}
+                placeholder="Ask Copilot anything (e.g. 'How do I fix 504 Gateway Timeout?', 'Why are Postgres queries slow?')..."
+              />
+              <button
+                className="btn btn-primary"
+                style={{ padding: "6px 16px", fontSize: "12px", height: "34px", display: "flex", alignItems: "center", gap: "6px" }}
+                onClick={() => void handleAskAiCopilot()}
+                disabled={aiQueryLoading || !aiQueryInput.trim()}
+              >
+                {aiQueryLoading ? (
+                  <>
+                    <span style={{ width: "12px", height: "12px", border: "2px solid #fff", borderRightColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "spin 0.75s linear infinite" }}></span>
+                    <span>Analyzing...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Ask Copilot</span>
+                    <span>➔</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Quick Suggested Query Chips */}
+            <div className="ai-chips-row">
+              <span style={{ fontSize: "11px", color: "var(--text-dim)", fontWeight: "600", textTransform: "uppercase" }}>Quick Queries:</span>
+              <button
+                type="button"
+                className="ai-chip"
+                onClick={() => void handleAskAiCopilot("How do I troubleshoot and fix 504 Gateway Timeout during checkout?")}
+              >
+                ⚡ Fix 504 Gateway Timeout
+              </button>
+              <button
+                type="button"
+                className="ai-chip"
+                onClick={() => void handleAskAiCopilot("Why are Postgres database connections getting exhausted and queries slow?")}
+              >
+                🐘 Postgres Connection Pool Optimization
+              </button>
+              <button
+                type="button"
+                className="ai-chip"
+                onClick={() => void handleAskAiCopilot("What is the difference between Resolving vs Closing a ticket in WorkMate?")}
+              >
+                📋 Resolving vs Closing Tickets
+              </button>
+              <button
+                type="button"
+                className="ai-chip"
+                onClick={() => void handleAskAiCopilot("How does staff attendance and shift tracking work with CSV exports?")}
+              >
+                🕒 Staff Attendance & Shift Tracking
+              </button>
+              <button
+                type="button"
+                className="ai-chip"
+                onClick={() => void handleAskAiCopilot("What causes Next.js hydration errors and how do I fix them?")}
+              >
+                🌐 Next.js SSR Hydration Fix
+              </button>
+            </div>
+
+            {aiCopilotError && (
+              <div style={{ padding: "10px 14px", background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)", borderRadius: "8px", color: "#fca5a5", fontSize: "12.5px", marginBottom: "12px" }}>
+                ⚠️ {aiCopilotError}
+              </div>
+            )}
+
+            {/* Structured Multi-Section AI Explanation Display */}
+            {aiQueryResult && (
+              <div className="ai-explanation-container">
+                <div className="ai-explanation-header">
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                      <span className="badge" style={{ background: "rgba(99, 102, 241, 0.2)", color: "#a5b4fc", border: "1px solid rgba(99, 102, 241, 0.4)", fontSize: "11px" }}>
+                        {aiQueryResult.category}
+                      </span>
+                      <span style={{ fontSize: "11px", color: "#64748b" }}>
+                        Query: &quot;{aiQueryResult.query}&quot;
+                      </span>
+                    </div>
+                    <h4 style={{ fontSize: "17px", fontWeight: "800", color: "#fff", margin: 0 }}>
+                      {aiQueryResult.headline}
+                    </h4>
+                  </div>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ padding: "4px 10px", fontSize: "11px" }}
+                    onClick={() => setAiQueryResult(null)}
+                    title="Clear AI explanation"
+                  >
+                    ✕ Dismiss
+                  </button>
+                </div>
+
+                {/* Overview */}
+                <div style={{ fontSize: "13.5px", color: "#cbd5e1", lineHeight: "1.65", marginBottom: "16px" }}>
+                  {aiQueryResult.overview}
+                </div>
+
+                {/* Root Causes Grid */}
+                {aiQueryResult.rootCauses && aiQueryResult.rootCauses.length > 0 && (
+                  <div style={{ marginBottom: "16px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "10px", padding: "14px 16px" }}>
+                    <div className="ai-section-title">
+                      <span>🚨</span> Suspected Root Causes & Architecture Bottlenecks
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "6px", fontSize: "12.5px", color: "#e2e8f0" }}>
+                      {aiQueryResult.rootCauses.map((cause, idx) => (
+                        <li key={idx} style={{ lineHeight: "1.5" }}>{cause}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Step by Step Remediation Plan */}
+                {aiQueryResult.stepByStepRemediation && aiQueryResult.stepByStepRemediation.length > 0 && (
+                  <div style={{ marginBottom: "16px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "10px", padding: "14px 16px" }}>
+                    <div className="ai-section-title">
+                      <span>🛠️</span> Step-by-Step Remediation Procedure
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {aiQueryResult.stepByStepRemediation.map((step, idx) => (
+                        <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: "10px", fontSize: "12.5px", color: "#f1f5f9", lineHeight: "1.5" }}>
+                          <span style={{ background: "#2563eb", color: "#fff", width: "20px", height: "20px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: "700", flexShrink: 0 }}>
+                            {idx + 1}
+                          </span>
+                          <div>{step.replace(/^\d+\.\s*/, "")}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Code Snippet / Commands */}
+                {aiQueryResult.codeSnippetOrCommands && (
+                  <div style={{ marginBottom: "16px" }}>
+                    <div className="ai-section-title">
+                      <span>💻</span> Diagnostic Commands & Configuration Patch
+                    </div>
+                    <pre className="ai-code-block">{aiQueryResult.codeSnippetOrCommands}</pre>
+                  </div>
+                )}
+
+                {/* Pro Tips */}
+                {aiQueryResult.proTipsAndBestPractices && aiQueryResult.proTipsAndBestPractices.length > 0 && (
+                  <div style={{ background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.25)", borderRadius: "10px", padding: "12px 16px" }}>
+                    <div style={{ fontSize: "12px", fontWeight: "700", color: "#34d399", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span>💡</span> Pro Tips & Production Best Practices
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "4px", fontSize: "12px", color: "#a7f3d0" }}>
+                      {aiQueryResult.proTipsAndBestPractices.map((tip, idx) => (
+                        <li key={idx} style={{ lineHeight: "1.5" }}>{tip}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* AI Executive Shift Briefing */}
@@ -3232,6 +3667,211 @@ export default function WorkMateEnterpriseApp() {
             </p>
           </div>
 
+          {/* Interactive AI Operations Copilot (Deep Technical Advisor & Troubleshooting) */}
+          <div className="ai-copilot-card">
+            <div className="ai-copilot-header">
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{
+                  width: "38px",
+                  height: "38px",
+                  borderRadius: "10px",
+                  background: "linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(168, 85, 247, 0.2))",
+                  border: "1px solid rgba(147, 197, 253, 0.3)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "20px"
+                }}>
+                  ✨
+                </div>
+                <div>
+                  <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#f8fafc", margin: 0 }}>
+                    WorkMate AI Operations Copilot & Knowledge Engine
+                  </h3>
+                  <p style={{ fontSize: "12px", color: "#94a3b8", margin: 0 }}>
+                    Ask any technical query, production error, or architecture troubleshooting question below.
+                  </p>
+                </div>
+              </div>
+              <span className="badge" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#34d399", border: "1px solid rgba(16, 185, 129, 0.3)", fontSize: "11px" }}>
+                ● Online · Domain Intelligence
+              </span>
+            </div>
+
+            {/* Query Bar */}
+            <div className="ai-query-bar">
+              <span style={{ fontSize: "16px", opacity: 0.7 }}>🔍</span>
+              <input
+                type="text"
+                className="ai-query-input"
+                value={aiQueryInput}
+                onChange={(e) => setAiQueryInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleAskAiCopilot();
+                  }
+                }}
+                placeholder="Ask Copilot anything (e.g. 'How do I fix 504 Gateway Timeout?', 'Why are Postgres queries slow?')..."
+              />
+              <button
+                className="btn btn-primary"
+                style={{ padding: "6px 16px", fontSize: "12px", height: "34px", display: "flex", alignItems: "center", gap: "6px" }}
+                onClick={() => void handleAskAiCopilot()}
+                disabled={aiQueryLoading || !aiQueryInput.trim()}
+              >
+                {aiQueryLoading ? (
+                  <>
+                    <span style={{ width: "12px", height: "12px", border: "2px solid #fff", borderRightColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "spin 0.75s linear infinite" }}></span>
+                    <span>Analyzing...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Ask Copilot</span>
+                    <span>➔</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Quick Suggested Query Chips */}
+            <div className="ai-chips-row">
+              <span style={{ fontSize: "11px", color: "var(--text-dim)", fontWeight: "600", textTransform: "uppercase" }}>Quick Queries:</span>
+              <button
+                type="button"
+                className="ai-chip"
+                onClick={() => void handleAskAiCopilot("How do I troubleshoot and fix 504 Gateway Timeout during checkout?")}
+              >
+                ⚡ Fix 504 Gateway Timeout
+              </button>
+              <button
+                type="button"
+                className="ai-chip"
+                onClick={() => void handleAskAiCopilot("Why are Postgres database connections getting exhausted and queries slow?")}
+              >
+                🐘 Postgres Connection Pool Optimization
+              </button>
+              <button
+                type="button"
+                className="ai-chip"
+                onClick={() => void handleAskAiCopilot("What is the difference between Resolving vs Closing a ticket in WorkMate?")}
+              >
+                📋 Resolving vs Closing Tickets
+              </button>
+              <button
+                type="button"
+                className="ai-chip"
+                onClick={() => void handleAskAiCopilot("How does staff attendance and shift tracking work with CSV exports?")}
+              >
+                🕒 Staff Attendance & Shift Tracking
+              </button>
+              <button
+                type="button"
+                className="ai-chip"
+                onClick={() => void handleAskAiCopilot("What causes Next.js hydration errors and how do I fix them?")}
+              >
+                🌐 Next.js SSR Hydration Fix
+              </button>
+            </div>
+
+            {aiCopilotError && (
+              <div style={{ padding: "10px 14px", background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)", borderRadius: "8px", color: "#fca5a5", fontSize: "12.5px", marginBottom: "12px" }}>
+                ⚠️ {aiCopilotError}
+              </div>
+            )}
+
+            {/* Structured Multi-Section AI Explanation Display */}
+            {aiQueryResult && (
+              <div className="ai-explanation-container">
+                <div className="ai-explanation-header">
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                      <span className="badge" style={{ background: "rgba(99, 102, 241, 0.2)", color: "#a5b4fc", border: "1px solid rgba(99, 102, 241, 0.4)", fontSize: "11px" }}>
+                        {aiQueryResult.category}
+                      </span>
+                      <span style={{ fontSize: "11px", color: "#64748b" }}>
+                        Query: &quot;{aiQueryResult.query}&quot;
+                      </span>
+                    </div>
+                    <h4 style={{ fontSize: "17px", fontWeight: "800", color: "#fff", margin: 0 }}>
+                      {aiQueryResult.headline}
+                    </h4>
+                  </div>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ padding: "4px 10px", fontSize: "11px" }}
+                    onClick={() => setAiQueryResult(null)}
+                    title="Clear AI explanation"
+                  >
+                    ✕ Dismiss
+                  </button>
+                </div>
+
+                {/* Overview */}
+                <div style={{ fontSize: "13.5px", color: "#cbd5e1", lineHeight: "1.65", marginBottom: "16px" }}>
+                  {aiQueryResult.overview}
+                </div>
+
+                {/* Root Causes Grid */}
+                {aiQueryResult.rootCauses && aiQueryResult.rootCauses.length > 0 && (
+                  <div style={{ marginBottom: "16px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "10px", padding: "14px 16px" }}>
+                    <div className="ai-section-title">
+                      <span>🚨</span> Suspected Root Causes & Architecture Bottlenecks
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "6px", fontSize: "12.5px", color: "#e2e8f0" }}>
+                      {aiQueryResult.rootCauses.map((cause, idx) => (
+                        <li key={idx} style={{ lineHeight: "1.5" }}>{cause}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Step by Step Remediation Plan */}
+                {aiQueryResult.stepByStepRemediation && aiQueryResult.stepByStepRemediation.length > 0 && (
+                  <div style={{ marginBottom: "16px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "10px", padding: "14px 16px" }}>
+                    <div className="ai-section-title">
+                      <span>🛠️</span> Step-by-Step Remediation Procedure
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {aiQueryResult.stepByStepRemediation.map((step, idx) => (
+                        <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: "10px", fontSize: "12.5px", color: "#f1f5f9", lineHeight: "1.5" }}>
+                          <span style={{ background: "#2563eb", color: "#fff", width: "20px", height: "20px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: "700", flexShrink: 0 }}>
+                            {idx + 1}
+                          </span>
+                          <div>{step.replace(/^\d+\.\s*/, "")}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Code Snippet / Commands */}
+                {aiQueryResult.codeSnippetOrCommands && (
+                  <div style={{ marginBottom: "16px" }}>
+                    <div className="ai-section-title">
+                      <span>💻</span> Diagnostic Commands & Configuration Patch
+                    </div>
+                    <pre className="ai-code-block">{aiQueryResult.codeSnippetOrCommands}</pre>
+                  </div>
+                )}
+
+                {/* Pro Tips */}
+                {aiQueryResult.proTipsAndBestPractices && aiQueryResult.proTipsAndBestPractices.length > 0 && (
+                  <div style={{ background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.25)", borderRadius: "10px", padding: "12px 16px" }}>
+                    <div style={{ fontSize: "12px", fontWeight: "700", color: "#34d399", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span>💡</span> Pro Tips & Production Best Practices
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "4px", fontSize: "12px", color: "#a7f3d0" }}>
+                      {aiQueryResult.proTipsAndBestPractices.map((tip, idx) => (
+                        <li key={idx} style={{ lineHeight: "1.5" }}>{tip}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="ai-sandbox-grid">
             <div className="sandbox-card">
               <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "16px" }}>Test Issue Analysis</h3>
@@ -3404,6 +4044,75 @@ export default function WorkMateEnterpriseApp() {
                     Closed {activeUser?.role === "ENGINEER" ? "(Manager Approval Required)" : ""}
                   </option>
                 </select>
+                {/* One-Click Lifecycle Action Buttons */}
+                <div style={{ display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
+                  {selectedIssue.status !== "RESOLVED" && selectedIssue.status !== "CLOSED" && activeUser?.role !== "USER" && (
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{
+                        background: "rgba(16, 185, 129, 0.15)",
+                        color: "#34d399",
+                        border: "1px solid rgba(16, 185, 129, 0.4)",
+                        padding: "5px 12px",
+                        fontSize: "12px",
+                        borderRadius: "8px",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                      onClick={() => handleUpdateStatus(selectedIssue.id, "RESOLVED")}
+                    >
+                      <span>✓</span> Mark Resolved
+                    </button>
+                  )}
+                  {selectedIssue.status !== "CLOSED" && activeUser?.role !== "USER" && activeUser?.role !== "ENGINEER" && (
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{
+                        background: "rgba(59, 130, 246, 0.15)",
+                        color: "#60a5fa",
+                        border: "1px solid rgba(59, 130, 246, 0.4)",
+                        padding: "5px 12px",
+                        fontSize: "12px",
+                        borderRadius: "8px",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                      onClick={() => handleUpdateStatus(selectedIssue.id, "CLOSED")}
+                    >
+                      <span>📁</span> Close & Archive
+                    </button>
+                  )}
+                  {selectedIssue.status === "OPEN" && activeUser?.role !== "USER" && (
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{
+                        background: "rgba(245, 158, 11, 0.15)",
+                        color: "#fbbf24",
+                        border: "1px solid rgba(245, 158, 11, 0.4)",
+                        padding: "5px 12px",
+                        fontSize: "12px",
+                        borderRadius: "8px",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                      onClick={() => handleUpdateStatus(selectedIssue.id, "IN_PROGRESS")}
+                    >
+                      <span>⚡</span> Start Progress
+                    </button>
+                  )}
+                </div>
                 {activeUser?.role === "USER" && (
                   <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "4px" }}>
                     Status is updated by assigned staff or engineers.
@@ -4682,6 +5391,78 @@ export default function WorkMateEnterpriseApp() {
                 <button className="btn btn-primary" type="submit" disabled={actionLoading}>Create Task</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Centered Modal Action Pop-up Message Box (Prominent Form Submission & Task Completion Dialog) */}
+      {actionModal.isOpen && (
+        <div className="action-modal-overlay" onClick={() => setActionModal((prev) => ({ ...prev, isOpen: false }))}>
+          <div className="action-modal-card" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="action-modal-close"
+              onClick={() => setActionModal((prev) => ({ ...prev, isOpen: false }))}
+              aria-label="Close dialog"
+            >
+              ✕
+            </button>
+
+            <div className={`action-modal-icon-badge kind-${(actionModal.actionKind || "general").toLowerCase()}`}>
+              {actionModal.actionKind === "RAISE" && "🎫"}
+              {actionModal.actionKind === "CLOSE" && "📁"}
+              {actionModal.actionKind === "RESOLVE" && "✅"}
+              {actionModal.actionKind === "REASSIGN" && "🔄"}
+              {actionModal.actionKind === "USER" && "👤"}
+              {actionModal.actionKind === "TASK" && "📋"}
+              {actionModal.actionKind === "SERVICE" && "🌐"}
+              {actionModal.actionKind === "GENERAL" && (actionModal.type === "success" ? "✓" : "ℹ️")}
+            </div>
+
+            <h3 className="action-modal-title">{actionModal.title}</h3>
+            <p className="action-modal-desc">{actionModal.message}</p>
+
+            {actionModal.details && actionModal.details.length > 0 && (
+              <div className="action-modal-details-grid">
+                {actionModal.details.map((item, idx) => (
+                  <div key={idx} className="action-modal-detail-row">
+                    <span className="action-modal-detail-label">{item.label}</span>
+                    <span className="action-modal-detail-value">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="action-modal-actions">
+              {actionModal.actionKind === "CLOSE" && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setActionModal((prev) => ({ ...prev, isOpen: false }));
+                    setActiveTab("closed-history");
+                  }}
+                >
+                  View in Closed History ➔
+                </button>
+              )}
+              {actionModal.actionKind === "RAISE" && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setActionModal((prev) => ({ ...prev, isOpen: false }));
+                    setActiveTab("tickets");
+                  }}
+                >
+                  View Ticket Queue ➔
+                </button>
+              )}
+              <button
+                className="btn btn-primary"
+                style={{ minWidth: "120px" }}
+                onClick={() => setActionModal((prev) => ({ ...prev, isOpen: false }))}
+              >
+                OK, Got It
+              </button>
+            </div>
           </div>
         </div>
       )}

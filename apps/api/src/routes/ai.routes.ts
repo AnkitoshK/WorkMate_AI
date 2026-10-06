@@ -68,4 +68,19 @@ router.post("/suggest-action", async (req, res, next) => {
   }
 });
 
+// POST /api/ai/query - Interactive Technical Assistant & Deep Explanations
+router.post("/query", async (req, res, next) => {
+  const { query, context } = req.body;
+  if (!query || typeof query !== "string" || !query.trim()) {
+    return res.status(400).json({ error: "Please provide a query or technical question" });
+  }
+
+  try {
+    const response = await AiService.answerUserQuery(query.trim(), context);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
