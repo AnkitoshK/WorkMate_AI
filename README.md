@@ -80,17 +80,97 @@
 FOR LIVE ACCESS - Please click this link - https://work-mate-j5h7ir51a-ankitoshs-projects.vercel.app/  **OR** https://work-mate-ai-eight.vercel.app/
 ---
 
-## 💻 Quick Start Guide
+## 💻 Local Machine Setup & Run Guide
 
-### ⚡ 1-Click Launch (All Services)
-Double-click `start-workmate.bat` or run:
+### 📋 Prerequisites
+Before running locally, ensure you have the following installed:
+1. **Node.js**: `v18.0.0` or higher ([nodejs.org](https://nodejs.org))
+2. **pnpm**: Fast, disk space efficient package manager. Install globally if needed:
+   ```bash
+   npm install -g pnpm
+   ```
+
+---
+
+### ⚠️ Important Notice
+> **The mobile client (`apps/mobile`) has been completely removed.** WorkMate AI is now a unified, responsive enterprise Web application.
+> If your terminal was previously inside `apps/mobile`, make sure to navigate back to the root directory before running any commands!
+
+---
+
+### 🚀 Step-by-Step Instructions
+
+#### 1. Navigate to the Project Root Directory
+Open your terminal (PowerShell, Command Prompt, or VS Code terminal) and ensure you are in the root directory:
+```powershell
+cd "d:\E DRIVE\Project\MCA\WorkMate_AI_Full_Stack_Project_Guide\WorkMate_AI"
+```
+
+#### 2. Install Dependencies & Generate Database Client
+From the root folder, install all workspace packages and auto-generate the Prisma client:
+```bash
+pnpm install
+```
+
+#### 3. Run the Full-Stack Application
+Choose whichever method you prefer:
+
+##### ⚡ Option A: 1-Click Launch (Easiest — Windows Batch File)
+Simply double-click `start-workmate.bat` in the project root folder.
+This opens a command window and launches both the Backend API and Next.js Web Portal simultaneously.
+
+##### 🖥️ Option B: Single Command (Concurrent Terminal)
+From the root directory, run:
 ```bash
 pnpm dev
-# or: pnpm dev:all
 ```
-This automatically launches:
-1. **Express API Server**: [http://localhost:4000](http://localhost:4000)
-2. **Next.js Web Portal**: [http://localhost:3000](http://localhost:3000)
+*(Runs both the Express API and Next.js Web server together with color-coded console logs).*
+
+##### 🔀 Option C: Separate Terminals (Recommended for isolated debugging)
+- **Terminal 1 — Backend REST API**:
+  ```bash
+  pnpm dev:api
+  ```
+  *Server starts at `http://localhost:4000`*
+
+- **Terminal 2 — Next.js Web Portal**:
+  ```bash
+  pnpm dev:web
+  ```
+  *Frontend starts at `http://localhost:3000`*
+
+---
+
+### 🌐 Accessing the Application
+
+Once launched, open your web browser:
+- **Web Portal (Next.js Dashboard)**: [http://localhost:3000](http://localhost:3000)
+- **Backend API Health Check**: [http://localhost:4000/health](http://localhost:4000/health)
+- **Backend API Metrics**: [http://localhost:4000/api/stats](http://localhost:4000/api/stats)
+
+---
+
+### 🔐 Pre-Seeded Test Credentials
+
+You can log into the local web portal using any of the simulated enterprise accounts:
+
+| Name | Role | Email | Password |
+|---|---|---|---|
+| **Sarah Chen** | Super Admin | `admin@workmate.internal` | `WorkMate@123` |
+| **Marcus Vance** | Operations & Dispatch Manager | `marcus@workmate.internal` | `WorkMate@123` |
+| **Alex Rivera** | Senior Software Engineer | `alex@workmate.internal` | `WorkMate@123` |
+| **Priya Sharma** | Network & Systems Specialist | `priya@workmate.internal` | `WorkMate@123` |
+
+---
+
+### 🛠️ Common Troubleshooting
+
+- **Error: `Could not determine Node.js install directory` or command fails in `apps/mobile`**:
+  Your terminal was likely opened in the old `apps/mobile` folder that was deleted. Simply run `cd ../..` or open a new terminal in the project root.
+- **Port Conflicts**:
+  If port `3000` or `4000` is already in use, check for background node processes or change ports in `apps/api/.env`.
+- **Database Connection**:
+  The backend connects to Neon Serverless Postgres via `DATABASE_URL` in `apps/api/.env`. Verify internet connectivity when querying live data.
 
 ---
 
