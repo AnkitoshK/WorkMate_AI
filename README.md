@@ -82,11 +82,13 @@ WorkMate AI enforces a strict, enterprise-compliant shift and attendance schedul
      - `HALF_DAY`: Work duration ≥ 4 hours 15 minutes.
      - `EARLY_LOGOUT`: Left prior to minimum shift threshold.
    - Duty status transitions to `OFF_DUTY`.
-4. **Shift Logout & 1-Hour Cooling Period**:
+4. **Shift Logout, 1-Hour Cooling Period & Mandatory Re-Entry Remarks**:
    - When the user logs out after punching out, the **Shift Cooldown period of 1 hour** is initialized.
    - **Cooldown Protection**: To protect against accidental double punches or session collisions immediately after shift exit, the employee is protected by a 1-hour cooling period.
    - Attempting to log in during this period triggers an HTTP `403 Forbidden` response displaying the exact time when next login is authorized:
      > *"Shift cooldown active: You logged out of your shift. Per 1-hour cooling period rules, you can log in again at [Time] (remaining: Xm)."*
+   - **Re-Entry Attendance with Remarks Popup**: If a user logs back in after the 1-hour cooling period having already completed and punched out of their shift today, they cannot mark standard attendance directly. When attempting to punch in, an **Attendance Remarks Popup Modal** appears requiring a valid reason (e.g., *Overtime Duty*, *Emergency Incident Triage*, *Post-Logout Shift Re-Entry*).
+   - Once confirmed, the re-entry punch is stored in the database with status `RE_ENTRY`, appears in the dashboard attendance audit trail with remarks, and exports seamlessly into Excel/CSV under the `Shift Remarks` column.
    - **SuperAdmin Override**: `SUPER_ADMIN` and `ADMIN` roles are exempt from cooldown locks for emergency platform management and can reset any user's cooldown via `POST /api/users/reset-cooldown`.
 5. **30-Day Rolling Data Retention**:
    - Attendance records are preserved for a 30-day (1 month) audit window.

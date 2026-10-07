@@ -37,6 +37,7 @@ const punchSchema = z.object({
   userId: z.string().min(1, "User ID is required"),
   action: z.enum(["PUNCH_IN", "PUNCH_OUT"]),
   clientType: z.string().trim().default("WEB_PORTAL"),
+  remarks: z.string().trim().optional(),
 });
 
 // GET /api/attendance - List attendance logs with datewise filter & statistics
@@ -148,7 +149,7 @@ router.post("/punch", async (req, res, next) => {
     return res.status(400).json({ error: "Invalid punch parameters", details: parsed.error.flatten() });
   }
 
-  const { userId, action, clientType } = parsed.data;
+  const { userId, action, clientType, remarks } = parsed.data;
 
   try {
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -184,20 +185,40 @@ router.post("/punch", async (req, res, next) => {
         }
       }
 
-      // Check if employee already punched in today
+      // Check if employee already punched in or out today
       const existingTodayPunch = await prisma.attendanceLog.findFirst({
         where: {
           userId: user.id,
           shiftDate: todayStr,
           action: "PUNCH_IN",
         },
+        orderBy: { timestamp: "desc" },
       });
 
-      if (existingTodayPunch) {
-        return res.status(400).json({
-          error: `You have already punched in for today's cycle at ${new Date(existingTodayPunch.punchIn || existingTodayPunch.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`,
-          log: existingTodayPunch,
-        });
+      const existingTodayPunchOut = await prisma.attendanceLog.findFirst({
+        where: {
+          userId: user.id,
+          shiftDate: todayStr,
+          action: "PUNCH_OUT",
+        },
+        orderBy: { timestamp: "desc" },
+      });
+
+      const isSubsequentPunch = !!(existingTodayPunch || existingTodayPunchOut);
+
+      // If user has already completed/marked shift today, they cannot mark regular attendance again directly;
+      // Remarks are strictly required to record an additional/re-entry session!
+      if (isSubsequentPunch) {
+        if (!remarks || !remarks.trim()) {
+          const reasonMsg = existingTodayPunchOut
+            ? "Shift attendance was already completed and punched out for today. To log presence again, remarks/reason are required."
+            : `You have already punched in for today's cycle at ${new Date(existingTodayPunch?.punchIn || existingTodayPunch?.timestamp || now).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Remarks/reason are required to log an additional session.`;
+          return res.status(400).json({
+            error: reasonMsg,
+            requiresRemarks: true,
+            hasPunchedOutToday: !!existingTodayPunchOut,
+          });
+        }
       }
 
       // Calculate arrival status relative to 9:00 AM shift and 30-min buffer (up to 9:30 AM)
@@ -208,11 +229,11 @@ router.post("/punch", async (req, res, next) => {
       const bufferEndMins = 9 * 60 + 30; // 9:30 AM = 570 mins
 
       let status = "ON_TIME";
-      let remarks = "";
+      let calculatedArrivalRemarks = "";
 
       if (currentTotalMins <= bufferEndMins) {
         status = "ON_TIME";
-        remarks = currentTotalMins <= shiftStartMins
+        calculatedArrivalRemarks = currentTotalMins <= shiftStartMins
           ? "On-time arrival (9:00 AM Shift)"
           : "Relaxation buffer applied (Arrival between 9:00 AM - 9:30 AM)";
       } else {
@@ -220,7 +241,17 @@ router.post("/punch", async (req, res, next) => {
         const lateMins = currentTotalMins - shiftStartMins;
         const lH = Math.floor(lateMins / 60);
         const lM = lateMins % 60;
-        remarks = `Late arrival by ${lH > 0 ? `${lH}h ` : ""}${lM}m (Shift starts 9:00 AM)`;
+        calculatedArrivalRemarks = `Late arrival by ${lH > 0 ? `${lH}h ` : ""}${lM}m (Shift starts 9:00 AM)`;
+      }
+
+      let logRemarks = calculatedArrivalRemarks;
+      let finalStatus = status;
+
+      if (isSubsequentPunch && remarks?.trim()) {
+        finalStatus = "RE_ENTRY";
+        logRemarks = `[Re-Entry Remarks]: ${remarks.trim()}`;
+      } else if (remarks?.trim()) {
+        logRemarks = `${calculatedArrivalRemarks} [Note: ${remarks.trim()}]`;
       }
 
       const log = await prisma.attendanceLog.create({
@@ -232,10 +263,10 @@ router.post("/punch", async (req, res, next) => {
           department: user.department || "Operations",
           clientType,
           action: "PUNCH_IN",
-          status,
+          status: finalStatus,
           shiftDate: todayStr,
           punchIn: now,
-          remarks,
+          remarks: logRemarks,
           ipAddress: clientIp,
           userAgent: userAgent.slice(0, 255),
         },
@@ -251,7 +282,9 @@ router.post("/punch", async (req, res, next) => {
 
       return res.status(201).json({
         success: true,
-        message: `Punch-in recorded successfully for ${user.name}. ${remarks}`,
+        message: isSubsequentPunch
+          ? `Additional attendance session recorded with remarks for ${user.name}.`
+          : `Punch-in recorded successfully for ${user.name}. ${calculatedArrivalRemarks}`,
         log,
       });
     }
@@ -276,7 +309,8 @@ router.post("/punch", async (req, res, next) => {
       // Shift is 8 hours 30 minutes (8.5 hrs)
       const isShiftCompleted = workHours >= 8.5 || (now.getHours() >= 17 && now.getMinutes() >= 30);
       const status = isShiftCompleted ? "COMPLETED" : workHours >= 4.25 ? "HALF_DAY" : "EARLY_LOGOUT";
-      const remarks = `Punched out at ${now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Total Shift Duration: ${hours}h ${minutes}m. Status: ${status}.`;
+      const customNotes = remarks && remarks.trim() ? ` [Notes: ${remarks.trim()}]` : "";
+      const punchOutRemarks = `Punched out at ${now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Total Shift Duration: ${hours}h ${minutes}m. Status: ${status}.${customNotes}`;
 
       const log = await prisma.attendanceLog.create({
         data: {
@@ -292,7 +326,7 @@ router.post("/punch", async (req, res, next) => {
           punchIn: punchInTime,
           punchOut: now,
           workHours,
-          remarks,
+          remarks: punchOutRemarks,
           ipAddress: clientIp,
           userAgent: userAgent.slice(0, 255),
         },

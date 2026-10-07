@@ -26,6 +26,11 @@ export interface User {
   role: Role;
   department?: string | null;
   avatar?: string | null;
+  shiftStatus?: string | null;
+  lastLoginAt?: string | null;
+  lastLogoutAt?: string | null;
+  lastPunchIn?: string | null;
+  lastPunchOut?: string | null;
   _count?: { assignedIssues?: number; tasks?: number };
 }
 
@@ -297,6 +302,13 @@ export default function WorkMateEnterpriseApp() {
   const [editingService, setEditingService] = useState<ServiceAsset | null>(null);
   const [newCommentText, setNewCommentText] = useState("");
 
+  // Attendance Remarks Modal State (For users re-punching after shift completion/logout)
+  const [remarksModalOpen, setRemarksModalOpen] = useState(false);
+  const [remarksModalAction, setRemarksModalAction] = useState<"PUNCH_IN" | "PUNCH_OUT">("PUNCH_IN");
+  const [remarksInput, setRemarksInput] = useState("");
+  const [remarksModalNotice, setRemarksModalNotice] = useState("");
+  const [remarksModalSubmitting, setRemarksModalSubmitting] = useState(false);
+
   // Profile Edit Form State
   const [profileName, setProfileName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
@@ -446,7 +458,7 @@ export default function WorkMateEnterpriseApp() {
 
   // Handle Explicit Shift Attendance Punch (PUNCH_IN / PUNCH_OUT)
   // Shift timing: 9:00 AM - 5:30 PM with 30-min relaxation buffer (up to 9:30 AM)
-  const handlePunchAttendance = async (action: "PUNCH_IN" | "PUNCH_OUT") => {
+  const handlePunchAttendance = async (action: "PUNCH_IN" | "PUNCH_OUT", customRemarks?: string) => {
     if (!activeUser) {
       triggerToast("warning", "Authentication Required", "Please sign in to log your attendance punch.", "ATTENDANCE");
       return;
@@ -461,11 +473,19 @@ export default function WorkMateEnterpriseApp() {
           userId: activeUser.id,
           action,
           clientType: "WEB_PORTAL",
+          remarks: customRemarks && customRemarks.trim() ? customRemarks.trim() : undefined,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
+        if (data.requiresRemarks) {
+          setRemarksModalAction(action);
+          setRemarksModalNotice(data.error || "Shift attendance already marked for today. Please provide remarks to record an additional session.");
+          setRemarksInput("");
+          setRemarksModalOpen(true);
+          return;
+        }
         triggerToast("warning", action === "PUNCH_IN" ? "Punch-In Notice" : "Punch-Out Notice", data.error || "Shift punch rejected.", "ATTENDANCE");
         return;
       }
@@ -482,6 +502,54 @@ export default function WorkMateEnterpriseApp() {
       triggerToast("error", "Punch Error", err.message || "Failed to reach attendance endpoint.", "ATTENDANCE");
     } finally {
       setPunchLoading(false);
+    }
+  };
+
+  // Initiate punch with pre-check for remarks requirement (for post-punchout or subsequent sessions)
+  const handleInitiatePunch = (action: "PUNCH_IN" | "PUNCH_OUT", forceRemarks = false) => {
+    if (!activeUser) {
+      triggerToast("warning", "Authentication Required", "Please sign in to log your attendance punch.", "ATTENDANCE");
+      return;
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayPunchOut = attendanceLogs.find(
+      (l) =>
+        (l.userId === activeUser.id || l.userEmail.toLowerCase() === activeUser.email.toLowerCase()) &&
+        (l.shiftDate === todayStr || new Date(l.timestamp).toISOString().slice(0, 10) === todayStr) &&
+        l.action === "PUNCH_OUT"
+    );
+
+    if (action === "PUNCH_IN" && (forceRemarks || todayPunchOut)) {
+      setRemarksModalAction("PUNCH_IN");
+      setRemarksModalNotice(
+        todayPunchOut
+          ? "You have already completed your shift and punched out for today. In accordance with system policy, regular attendance cannot be marked again directly. Please provide valid remarks/reason to record this re-entry presence."
+          : "Shift attendance was already initiated today. Remarks/reason are required to log an additional presence record."
+      );
+      setRemarksInput("");
+      setRemarksModalOpen(true);
+      return;
+    }
+
+    void handlePunchAttendance(action);
+  };
+
+  // Submit Remarks Punch from the Popup Modal
+  const handleSubmitRemarksPunch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!remarksInput.trim()) {
+      triggerToast("warning", "Remarks Required", "Please enter valid remarks/reason before submitting.", "ATTENDANCE");
+      return;
+    }
+
+    try {
+      setRemarksModalSubmitting(true);
+      await handlePunchAttendance(remarksModalAction, remarksInput.trim());
+      setRemarksModalOpen(false);
+      setRemarksInput("");
+    } finally {
+      setRemarksModalSubmitting(false);
     }
   };
 
@@ -3525,19 +3593,37 @@ export default function WorkMateEnterpriseApp() {
                   </div>
 
                   <div>
-                    {myTodayPunchOut ? (
-                      <span className="badge badge-resolved" style={{ fontSize: "11px", padding: "4px 10px" }}>
-                        ✅ Shift Completed
-                      </span>
-                    ) : myTodayPunchIn ? (
-                      <span className="badge badge-progress" style={{ fontSize: "11px", padding: "4px 10px" }}>
-                        🟢 On Duty (Punched In)
-                      </span>
-                    ) : (
-                      <span className="badge badge-assigned" style={{ fontSize: "11px", padding: "4px 10px" }}>
-                        ⏳ Not Punched Today
-                      </span>
-                    )}
+                    {(() => {
+                      const isCurrentlyOnDuty = activeUser
+                        ? (activeUser.shiftStatus === "ON_DUTY" || (myTodayPunchIn && (!myTodayPunchOut || new Date(myTodayPunchIn.timestamp) > new Date(myTodayPunchOut.timestamp))))
+                        : false;
+                      if (isCurrentlyOnDuty) {
+                        return (
+                          <span className="badge badge-progress" style={{ fontSize: "11px", padding: "4px 10px" }}>
+                            🟢 On Duty (Punched In)
+                          </span>
+                        );
+                      }
+                      if (myTodayPunchOut) {
+                        return (
+                          <span className="badge badge-resolved" style={{ fontSize: "11px", padding: "4px 10px" }}>
+                            ✅ Shift Completed
+                          </span>
+                        );
+                      }
+                      if (myTodayPunchIn) {
+                        return (
+                          <span className="badge badge-progress" style={{ fontSize: "11px", padding: "4px 10px" }}>
+                            🟢 On Duty (Punched In)
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="badge badge-assigned" style={{ fontSize: "11px", padding: "4px 10px" }}>
+                          ⏳ Not Punched Today
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -3553,42 +3639,75 @@ export default function WorkMateEnterpriseApp() {
 
                 {/* Punch Action Buttons */}
                 {activeUser ? (
-                  <div style={{ display: "flex", gap: "10px", marginTop: "4px", flexWrap: "wrap" }}>
-                    {!myTodayPunchIn ? (
-                      <button
-                        className="btn btn-primary"
-                        style={{ flex: 1, minHeight: "40px", fontSize: "13px", fontWeight: "700", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
-                        disabled={punchLoading}
-                        onClick={() => void handlePunchAttendance("PUNCH_IN")}
-                      >
-                        <span>⏱️</span> {punchLoading ? "Recording..." : "Punch In (Shift Start)"}
-                      </button>
-                    ) : !myTodayPunchOut ? (
-                      <button
-                        className="btn btn-secondary"
-                        style={{
-                          flex: 1,
-                          minHeight: "40px",
-                          fontSize: "13px",
-                          fontWeight: "700",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: "8px",
-                          background: "rgba(239, 68, 68, 0.15)",
-                          color: "#f87171",
-                          border: "1px solid rgba(239, 68, 68, 0.4)"
-                        }}
-                        disabled={punchLoading}
-                        onClick={() => void handlePunchAttendance("PUNCH_OUT")}
-                      >
-                        <span>🚪</span> {punchLoading ? "Concluding..." : "Punch Out (Shift End at 5:30 PM)"}
-                      </button>
-                    ) : (
-                      <div style={{ fontSize: "12px", color: "#34d399", padding: "8px 0" }}>
-                        ✨ Shift logged for today ({todayStr}). Your next cycle will run tomorrow morning at 9:00 AM.
-                      </div>
-                    )}
+                  <div style={{ display: "flex", gap: "10px", marginTop: "4px", flexWrap: "wrap", width: "100%" }}>
+                    {(() => {
+                      const isCurrentlyOnDuty = activeUser.shiftStatus === "ON_DUTY" || (myTodayPunchIn && (!myTodayPunchOut || new Date(myTodayPunchIn.timestamp) > new Date(myTodayPunchOut.timestamp)));
+
+                      if (isCurrentlyOnDuty) {
+                        return (
+                          <button
+                            className="btn btn-secondary"
+                            style={{
+                              flex: 1,
+                              minHeight: "40px",
+                              fontSize: "13px",
+                              fontWeight: "700",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "8px",
+                              background: "rgba(239, 68, 68, 0.15)",
+                              color: "#f87171",
+                              border: "1px solid rgba(239, 68, 68, 0.4)"
+                            }}
+                            disabled={punchLoading}
+                            onClick={() => void handlePunchAttendance("PUNCH_OUT")}
+                          >
+                            <span>🚪</span> {punchLoading ? "Concluding..." : "Punch Out (Shift End at 5:30 PM)"}
+                          </button>
+                        );
+                      }
+
+                      if (!myTodayPunchIn) {
+                        return (
+                          <button
+                            className="btn btn-primary"
+                            style={{ flex: 1, minHeight: "40px", fontSize: "13px", fontWeight: "700", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
+                            disabled={punchLoading}
+                            onClick={() => void handleInitiatePunch("PUNCH_IN")}
+                          >
+                            <span>⏱️</span> {punchLoading ? "Recording..." : "Punch In (Shift Start)"}
+                          </button>
+                        );
+                      }
+
+                      // Shift was already completed (punched out earlier)
+                      return (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+                          <div style={{ fontSize: "12px", color: "#34d399", display: "flex", alignItems: "center", gap: "6px" }}>
+                            <span>✅</span> Regular shift logged for today ({todayStr}). Re-attendance requires remarks.
+                          </div>
+                          <button
+                            className="btn btn-primary"
+                            style={{
+                              minHeight: "40px",
+                              fontSize: "13px",
+                              fontWeight: "700",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "8px",
+                              background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
+                              boxShadow: "0 4px 12px rgba(2, 132, 199, 0.3)"
+                            }}
+                            disabled={punchLoading}
+                            onClick={() => handleInitiatePunch("PUNCH_IN", true)}
+                          >
+                            <span>📝</span> Re-Punch In (Remarks Required)
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 ) : (
                   <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
@@ -3855,7 +3974,7 @@ export default function WorkMateEnterpriseApp() {
                 {activeUser && !attendanceDateFilter && (
                   <button
                     className="btn btn-primary"
-                    onClick={() => void handlePunchAttendance("PUNCH_IN")}
+                    onClick={() => void handleInitiatePunch("PUNCH_IN")}
                   >
                     Punch In Now
                   </button>
@@ -6506,6 +6625,119 @@ export default function WorkMateEnterpriseApp() {
                 OK, Got It
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: ATTENDANCE REMARKS POPUP MODAL (MANDATORY REMARKS FOR RE-ENTRY / SUBSEQUENT PUNCH) */}
+      {remarksModalOpen && (
+        <div className="modal-overlay" onClick={() => setRemarksModalOpen(false)}>
+          <div className="modal-content" style={{ maxWidth: "520px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span>📝</span> Attendance Remarks Required
+              </h2>
+              <button className="close-btn" onClick={() => setRemarksModalOpen(false)}>✕</button>
+            </div>
+
+            <div style={{
+              background: "rgba(245, 158, 11, 0.1)",
+              border: "1px solid rgba(245, 158, 11, 0.3)",
+              borderRadius: "8px",
+              padding: "12px 14px",
+              marginBottom: "16px",
+              fontSize: "12.5px",
+              color: "#fbbf24",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "8px",
+              lineHeight: "1.5"
+            }}>
+              <span style={{ fontSize: "16px", lineHeight: "1" }}>⚠️</span>
+              <div>
+                <strong>Shift Policy Notice:</strong> {remarksModalNotice || "Shift attendance was already marked for today. In accordance with platform policy, regular attendance cannot be marked again directly. To record this re-entry / additional session, remarks/reason are required."}
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmitRemarksPunch}>
+              <div className="form-group">
+                <label className="form-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>Remarks / Reason for Additional Attendance <strong style={{ color: "#ef4444" }}>*</strong></span>
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "none" }}>Saved to attendance table & Excel export</span>
+                </label>
+
+                {/* Quick suggestion tags for faster operational entry */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+                  {[
+                    "Overtime Duty",
+                    "Emergency Incident Triage",
+                    "Post-Logout Shift Re-Entry",
+                    "Extended Client Support",
+                    "Authorized Special Assignment",
+                  ].map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      style={{
+                        background: remarksInput.includes(tag) ? "rgba(56, 189, 248, 0.25)" : "rgba(255, 255, 255, 0.05)",
+                        border: `1px solid ${remarksInput.includes(tag) ? "#38bdf8" : "rgba(255, 255, 255, 0.15)"}`,
+                        borderRadius: "20px",
+                        padding: "4px 10px",
+                        fontSize: "11px",
+                        color: remarksInput.includes(tag) ? "#38bdf8" : "#94a3b8",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                      onClick={() => {
+                        setRemarksInput((prev) => prev ? `${prev}; ${tag}` : tag);
+                      }}
+                    >
+                      + {tag}
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  className="form-input"
+                  style={{
+                    minHeight: "95px",
+                    resize: "vertical",
+                    fontSize: "13px",
+                    lineHeight: "1.5",
+                    padding: "10px 12px"
+                  }}
+                  placeholder="Enter detailed reason (e.g., Logged in after 1-hour cooling period to address urgent production incident #204)..."
+                  value={remarksInput}
+                  onChange={(e) => setRemarksInput(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setRemarksModalOpen(false)}
+                  disabled={remarksModalSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={remarksModalSubmitting || !remarksInput.trim()}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
+                  }}
+                >
+                  {remarksModalSubmitting ? "Recording..." : "Confirm & Save Attendance"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
