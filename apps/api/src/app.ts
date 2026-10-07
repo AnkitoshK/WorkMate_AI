@@ -10,6 +10,7 @@ import statsRoutes from "./routes/stats.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import serviceRoutes from "./routes/service.routes.js";
 import attendanceRoutes from "./routes/attendance.routes.js";
+import closedTicketRoutes from "./routes/closed-ticket.routes.js";
 
 export const prisma = new PrismaClient();
 export const app = express();
@@ -34,6 +35,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/auth", userRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/attendance", attendanceRoutes);
+app.use("/api/closed-tickets", closedTicketRoutes);
 
 
 // Centralized Error Handling Middleware

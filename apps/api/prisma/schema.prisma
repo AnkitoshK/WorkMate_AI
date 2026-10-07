@@ -56,6 +56,11 @@ model User {
   avatar         String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  lastLoginAt    DateTime?
+  lastLogoutAt   DateTime?
+  lastPunchIn    DateTime?
+  lastPunchOut   DateTime?
+  shiftStatus    String?   @default("OFF_DUTY")
   tasks          Task[]
   reportedIssues Issue[]   @relation("ReportedIssues")
   assignedIssues Issue[]   @relation("AssignedIssues")
@@ -154,23 +159,63 @@ model Comment {
 }
 
 model AttendanceLog {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String?
   userName    String
   userEmail   String
   role        String
   department  String?
-  clientType  String   @default("WEB_PORTAL") // WEB_PORTAL, MOBILE_APP
-  action      String   @default("LOGIN")      // LOGIN, SESSION_SWITCH, SHIFT_START
-  status      String   @default("PRESENT")    // PRESENT, ACTIVE
+  clientType  String    @default("WEB_PORTAL") // WEB_PORTAL, MOBILE_APP
+  action      String    @default("PUNCH_IN")   // PUNCH_IN, PUNCH_OUT, LOGIN, LOGOUT
+  status      String    @default("PRESENT")    // PRESENT, ON_TIME, LATE, HALF_DAY, COMPLETED
+  shiftDate   String?   // Formatted YYYY-MM-DD for fast datewise indexing & filtering
+  punchIn     DateTime? // Punch In timestamp
+  punchOut    DateTime? // Punch Out timestamp
+  workHours   Float?    // Total logged hours in decimal
+  remarks     String?   // e.g. "Shift 9:00 AM - 5:30 PM (On Time Buffer)"
   ipAddress   String?
   userAgent   String?
-  timestamp   DateTime @default(now())
+  timestamp   DateTime  @default(now())
 
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId, timestamp])
+  @@index([shiftDate])
   @@index([timestamp])
+}
+
+model ClosedTicket {
+  id                 String   @id @default(cuid())
+  ticketNumber       Int      @unique
+  originalIssueId    String?
+  title              String
+  description        String
+  status             String   @default("CLOSED")
+  priority           String   @default("MEDIUM")
+  category           String   @default("OTHER")
+  department         String?
+  source             String   @default("WEB_PORTAL")
+  affectedUrl        String?
+  location           String?
+  resolutionNotes    String?
+  aiSummary          String?
+  aiRootCause        String?
+  reporterId         String?
+  reporterName       String?
+  reporterEmail      String?
+  assigneeId         String?
+  assigneeName       String?
+  assigneeEmail      String?
+  serviceAssetName   String?
+  turnaroundDuration String?
+  turnaroundHours    Float?
+  closedAt           DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([ticketNumber])
+  @@index([closedAt])
+  @@index([department])
 }
 
 

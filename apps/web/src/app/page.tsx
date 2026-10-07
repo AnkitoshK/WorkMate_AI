@@ -85,6 +85,7 @@ export interface Issue {
   tasks?: Task[];
   _count?: { comments: number; tasks: number };
   resolvedAt?: string | null;
+  closedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -202,6 +203,11 @@ export interface AttendanceRecord {
   clientType: string;
   action: string;
   status: string;
+  shiftDate?: string | null;
+  punchIn?: string | null;
+  punchOut?: string | null;
+  workHours?: number | null;
+  remarks?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;
   timestamp: string;
@@ -230,14 +236,18 @@ export default function WorkMateEnterpriseApp() {
   // Interactive Action Notifications (Toasts / Popups)
   const [toasts, setToasts] = useState<ActionToast[]>([]);
 
-  // Attendance & Login Tracking
+  // Attendance & Shift Punch Tracking
   const [attendanceLogs, setAttendanceLogs] = useState<AttendanceRecord[]>([]);
   const [attendanceStats, setAttendanceStats] = useState({ totalCount: 0, todayCount: 0, uniqueStaffToday: 0 });
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [attendanceRoleFilter, setAttendanceRoleFilter] = useState("ALL");
+  const [attendanceDateFilter, setAttendanceDateFilter] = useState("");
+  const [punchLoading, setPunchLoading] = useState(false);
+  const [currentLiveTime, setCurrentLiveTime] = useState("");
 
-  // Closed Tickets History Filters
+  // Closed Tickets History Archive & Table
+  const [closedTicketsList, setClosedTicketsList] = useState<any[]>([]);
   const [closedSearchQuery, setClosedSearchQuery] = useState("");
   const [closedCategoryFilter, setClosedCategoryFilter] = useState("ALL");
   const [closedDepartmentFilter, setClosedDepartmentFilter] = useState("ALL");
@@ -394,11 +404,12 @@ export default function WorkMateEnterpriseApp() {
     []
   );
 
-  // Fetch Attendance Logs
-  const fetchAttendanceLogs = useCallback(async () => {
+  // Fetch Attendance Logs (Supports Date-wise filter)
+  const fetchAttendanceLogs = useCallback(async (dateFilter?: string) => {
     try {
       setAttendanceLoading(true);
-      const res = await fetch(`${API_BASE}/api/attendance`);
+      const queryParam = dateFilter ? `?date=${encodeURIComponent(dateFilter)}` : "";
+      const res = await fetch(`${API_BASE}/api/attendance${queryParam}`);
       if (res.ok) {
         const data = await res.json();
         setAttendanceLogs(data.logs || []);
@@ -415,74 +426,174 @@ export default function WorkMateEnterpriseApp() {
     }
   }, []);
 
-  // Record Attendance Stamp
-  const recordAttendance = useCallback(
-    async (user: User, action = "LOGIN") => {
-      try {
-        const res = await fetch(`${API_BASE}/api/attendance`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userId: user.id,
-            userName: user.name,
-            userEmail: user.email,
-            role: user.role,
-            department: user.department || "Operations",
-            clientType: "WEB_PORTAL",
-            action,
-            status: "PRESENT",
-          }),
-        });
-        if (res.ok) {
-          void fetchAttendanceLogs();
-        }
-      } catch (err) {
-        console.error("Attendance recording notice:", err);
-      }
-    },
-    [fetchAttendanceLogs]
-  );
-
-  // Export Attendance CSV Report
-  const handleExportAttendanceCsv = () => {
-    if (attendanceLogs.length === 0) {
-      triggerToast("warning", "No Attendance Records", "There are no attendance records to export.", "ATTENDANCE");
+  // Handle Explicit Shift Attendance Punch (PUNCH_IN / PUNCH_OUT)
+  // Shift timing: 9:00 AM - 5:30 PM with 30-min relaxation buffer (up to 9:30 AM)
+  const handlePunchAttendance = async (action: "PUNCH_IN" | "PUNCH_OUT") => {
+    if (!activeUser) {
+      triggerToast("warning", "Authentication Required", "Please sign in to log your attendance punch.", "ATTENDANCE");
       return;
     }
 
-    const headers = ["Log ID", "Date", "Time", "Staff Member", "Email", "Role", "Department", "Portal", "Action", "Status", "IP Address"];
+    try {
+      setPunchLoading(true);
+      const res = await fetch(`${API_BASE}/api/attendance/punch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: activeUser.id,
+          action,
+          clientType: "WEB_PORTAL",
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        triggerToast("warning", action === "PUNCH_IN" ? "Punch-In Notice" : "Punch-Out Notice", data.error || "Shift punch rejected.", "ATTENDANCE");
+        return;
+      }
+
+      triggerToast(
+        "success",
+        action === "PUNCH_IN" ? "Shift Punch-In Recorded" : "Shift Punch-Out Recorded",
+        data.message || `Attendance punch recorded for ${activeUser.name}.`,
+        "ATTENDANCE"
+      );
+      void fetchAttendanceLogs(attendanceDateFilter);
+      await refreshAllData();
+    } catch (err: any) {
+      triggerToast("error", "Punch Error", err.message || "Failed to reach attendance endpoint.", "ATTENDANCE");
+    } finally {
+      setPunchLoading(false);
+    }
+  };
+
+  // Trigger 30-Day Auto-Scrap (1-month rolling retention cycle)
+  const handleScrapOldAttendance = async () => {
+    try {
+      setAttendanceLoading(true);
+      const res = await fetch(`${API_BASE}/api/attendance/scrap-old`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(
+          "info",
+          "Retention Maintenance Complete",
+          data.message || `Scrapped ${data.scrappedCount} attendance logs older than 30 days.`,
+          "ATTENDANCE"
+        );
+        void fetchAttendanceLogs(attendanceDateFilter);
+      }
+    } catch (err) {
+      console.error("Scrap old attendance error:", err);
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
+  // Export Attendance CSV Report (Respects date filter and UTF-8 BOM)
+  const handleExportAttendanceCsv = () => {
+    if (attendanceLogs.length === 0) {
+      triggerToast("warning", "No Attendance Records", "There are no attendance records to export for the active view.", "ATTENDANCE");
+      return;
+    }
+
+    const headers = [
+      "Log ID",
+      "Shift Date",
+      "Staff Member",
+      "Email Address",
+      "Role",
+      "Department",
+      "Access Portal",
+      "Action",
+      "Shift Status",
+      "Punch In Time",
+      "Punch Out Time",
+      "Logged Hours",
+      "Shift Remarks",
+      "Timestamp",
+    ];
+
     const rows = attendanceLogs.map((log) => {
-      const d = new Date(log.timestamp);
+      const punchInStr = log.punchIn ? new Date(log.punchIn).toLocaleTimeString() : "N/A";
+      const punchOutStr = log.punchOut ? new Date(log.punchOut).toLocaleTimeString() : "N/A";
+      const hoursStr = log.workHours ? `${log.workHours}h` : "N/A";
+
       return [
         `"${log.id}"`,
-        `"${d.toLocaleDateString()}"`,
-        `"${d.toLocaleTimeString()}"`,
-        `"${log.userName.replace(/"/g, '""')}"`,
-        `"${log.userEmail.replace(/"/g, '""')}"`,
+        `"${log.shiftDate || new Date(log.timestamp).toISOString().slice(0, 10)}"`,
+        `"${(log.userName || "").replace(/"/g, '""')}"`,
+        `"${(log.userEmail || "").replace(/"/g, '""')}"`,
         `"${log.role}"`,
         `"${(log.department || "Operations").replace(/"/g, '""')}"`,
         `"${log.clientType}"`,
         `"${log.action}"`,
         `"${log.status}"`,
-        `"${log.ipAddress || "127.0.0.1"}"`,
+        `"${punchInStr}"`,
+        `"${punchOutStr}"`,
+        `"${hoursStr}"`,
+        `"${(log.remarks || "").replace(/"/g, '""')}"`,
+        `"${new Date(log.timestamp).toLocaleString()}"`,
       ].join(",");
     });
 
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `WorkMate_Attendance_Report_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute("href", url);
+    const dateSuffix = attendanceDateFilter ? `_${attendanceDateFilter}` : `_${new Date().toISOString().slice(0, 10)}`;
+    link.setAttribute("download", `WorkMate_Attendance_Report${dateSuffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 
-    triggerToast("success", "Attendance Report Exported", `Downloaded attendance log containing ${attendanceLogs.length} entries.`, "ATTENDANCE");
+    triggerToast("success", "Attendance Report Exported", `Downloaded attendance report containing ${attendanceLogs.length} entries.`, "ATTENDANCE");
   };
 
-  // Export Closed Tickets CSV Report
+  // Export Closed Tickets CSV Report (Robust Blob + UTF-8 BOM, never truncated by #)
   const handleExportClosedTicketsCsv = () => {
-    const closed = issues.filter((i) => i.status === "CLOSED");
+    // Combine issue records with status CLOSED and dedicated ClosedTicket database archive
+    const closedMap = new Map<number, any>();
+
+    issues.filter((i) => i.status === "CLOSED").forEach((iss) => {
+      closedMap.set(iss.ticketNumber, {
+        ticketNumber: iss.ticketNumber,
+        title: iss.title,
+        category: iss.category,
+        priority: iss.priority,
+        department: iss.department || "Operations",
+        reporterName: iss.reporter?.name || "Unknown",
+        reporterEmail: iss.reporter?.email || "",
+        assigneeName: iss.assignee?.name || "Unassigned / Lead",
+        createdAt: iss.createdAt,
+        closedAt: iss.closedAt || iss.resolvedAt || iss.updatedAt,
+        resolutionNotes: iss.resolutionNotes || "Resolved per standard procedure",
+        aiRootCause: iss.aiRootCause || "N/A",
+        serviceAssetName: iss.serviceAsset?.name || "Unlinked",
+      });
+    });
+
+    closedTicketsList.forEach((ct) => {
+      closedMap.set(ct.ticketNumber, {
+        ticketNumber: ct.ticketNumber,
+        title: ct.title,
+        category: ct.category,
+        priority: ct.priority,
+        department: ct.department || "Operations",
+        reporterName: ct.reporterName || "Unknown",
+        reporterEmail: ct.reporterEmail || "",
+        assigneeName: ct.assigneeName || "Unassigned / Lead",
+        createdAt: ct.createdAt,
+        closedAt: ct.closedAt,
+        turnaroundDuration: ct.turnaroundDuration,
+        resolutionNotes: ct.resolutionNotes || "Resolved per standard procedure",
+        aiRootCause: ct.aiRootCause || "N/A",
+        serviceAssetName: ct.serviceAssetName || "Unlinked",
+      });
+    });
+
+    const closed = Array.from(closedMap.values());
     if (closed.length === 0) {
       triggerToast("warning", "No Closed Tickets", "There are currently no closed tickets to export.", "CLOSE");
       return;
@@ -507,38 +618,41 @@ export default function WorkMateEnterpriseApp() {
 
     const rows = closed.map((iss) => {
       const created = new Date(iss.createdAt);
-      const closedDate = iss.resolvedAt ? new Date(iss.resolvedAt) : new Date(iss.updatedAt);
+      const closedDate = new Date(iss.closedAt || iss.createdAt);
       const diffMs = Math.max(0, closedDate.getTime() - created.getTime());
       const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
       const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      const duration = `${diffHours}h ${diffMins}m`;
+      const duration = iss.turnaroundDuration || `${diffHours}h ${diffMins}m`;
 
       return [
-        `"#TIK-${String(iss.ticketNumber).padStart(3, "0")}"`,
-        `"${iss.title.replace(/"/g, '""')}"`,
-        `"${iss.category}"`,
-        `"${iss.priority}"`,
+        `"TIK-${String(iss.ticketNumber).padStart(3, "0")}"`,
+        `"${(iss.title || "").replace(/"/g, '""')}"`,
+        `"${iss.category || "OTHER"}"`,
+        `"${iss.priority || "MEDIUM"}"`,
         `"${(iss.department || "Operations").replace(/"/g, '""')}"`,
-        `"${(iss.reporter?.name || "Unknown").replace(/"/g, '""')}"`,
-        `"${(iss.reporter?.email || "").replace(/"/g, '""')}"`,
-        `"${(iss.assignee?.name || "Unassigned / Lead").replace(/"/g, '""')}"`,
+        `"${(iss.reporterName || "Unknown").replace(/"/g, '""')}"`,
+        `"${(iss.reporterEmail || "").replace(/"/g, '""')}"`,
+        `"${(iss.assigneeName || "Lead Engineer").replace(/"/g, '""')}"`,
         `"${created.toLocaleString()}"`,
         `"${closedDate.toLocaleString()}"`,
         `"${duration}"`,
         `"${(iss.resolutionNotes || "Resolved per standard procedure").replace(/"/g, '""')}"`,
         `"${(iss.aiRootCause || "N/A").replace(/"/g, '""')}"`,
-        `"${(iss.serviceAsset?.name || "Unlinked").replace(/"/g, '""')}"`,
+        `"${(iss.serviceAssetName || "Unlinked").replace(/"/g, '""')}"`,
       ].join(",");
     });
 
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
-    const encodedUri = encodeURI(csvContent);
+    // UTF-8 BOM ensures Excel loads data cleanly without column/row truncation
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `WorkMate_Closed_Tickets_History_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 
     triggerToast("success", "Closed Tickets Exported", `Downloaded closed tickets history containing ${closed.length} records.`, "CLOSE");
   };
@@ -565,7 +679,15 @@ export default function WorkMateEnterpriseApp() {
     }
   }, [services]);
 
-  // Session: Login as user
+  // Live Clock Updater for Shift Punching
+  useEffect(() => {
+    const updateTime = () => setCurrentLiveTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Session: Login as user (Attendance is explicitly punched, NOT marked on web login)
   const handleLoginAs = useCallback((user: User) => {
     setActiveUser(user);
     if (typeof window !== "undefined") {
@@ -581,15 +703,13 @@ export default function WorkMateEnterpriseApp() {
       setSwitchNotification(null);
     }, 7000);
 
-    // Record attendance login audit
-    void recordAttendance(user, "SESSION_SWITCH");
     triggerToast(
-      "success",
-      `Shift Attendance Logged: ${user.name}`,
-      `Signed in as ${user.name} (${user.role} · ${user.department || "Operations"}). Shift presence timestamp recorded.`,
+      "info",
+      `Active Session: ${user.name}`,
+      `Signed in as ${user.name} (${user.role} · ${user.department || "Operations"}). To mark shift attendance, use the Punch Terminal.`,
       "ATTENDANCE"
     );
-  }, [recordAttendance, triggerToast]);
+  }, [triggerToast]);
 
   // Session: Email + Password Login (Production Real-Time Authentication)
   const handleEmailLogin = async (e: FormEvent) => {
@@ -631,19 +751,25 @@ export default function WorkMateEnterpriseApp() {
     }
   };
 
-  // Session: Logout
+  // Session: Logout (Tracks shift cooldown: 8h 30m cycle)
   const handleLogout = useCallback(() => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("workmate_active_user_id");
-      localStorage.removeItem("workmate_active_user_email");
-    }
     if (activeUser) {
+      fetch(`${API_BASE}/api/users/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: activeUser.id }),
+      }).catch((err) => console.error("Logout notification notice:", err));
+
       triggerToast(
         "info",
         "Session Concluded",
-        `Logged out of ${activeUser.name}'s session. Shift status archived.`,
+        `Logged out ${activeUser.name}. Shift cooldown period initialized (8h 30m cycle).`,
         "ATTENDANCE"
       );
+    }
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("workmate_active_user_id");
+      localStorage.removeItem("workmate_active_user_email");
     }
     setActiveUser(null);
     setSwitchNotification(null);
@@ -658,14 +784,16 @@ export default function WorkMateEnterpriseApp() {
   const refreshAllData = useCallback(async () => {
     try {
       setLoading(true);
-      const [uRes, iRes, tRes, sRes, servRes] = await Promise.all([
+      const [uRes, iRes, tRes, sRes, servRes, clRes] = await Promise.all([
         fetch(`${API_BASE}/api/users`).then((r) => r.json()),
         fetch(`${API_BASE}/api/issues`).then((r) => r.json()),
         fetch(`${API_BASE}/api/tasks`).then((r) => r.json()),
         fetch(`${API_BASE}/api/stats`).then((r) => r.json()),
         fetch(`${API_BASE}/api/services`).then((r) => r.json()),
+        fetch(`${API_BASE}/api/closed-tickets`).then((r) => r.json()).catch(() => []),
       ]);
 
+      setClosedTicketsList(Array.isArray(clRes) ? clRes : []);
       const fetchedUsers: User[] = Array.isArray(uRes) ? uRes : [];
       setUsers(fetchedUsers);
 
@@ -2659,7 +2787,23 @@ export default function WorkMateEnterpriseApp() {
 
       {/* TAB: CLOSED TICKETS HISTORY & AUDIT ARCHIVE */}
       {activeTab === "closed-history" && (() => {
-        const closedIssuesList = issues.filter((iss) => iss.status === "CLOSED");
+        // Build unified list from issues with status CLOSED and dedicated ClosedTicket database archive
+        const closedMap = new Map<number, any>();
+        issues.filter((iss) => iss.status === "CLOSED").forEach((iss) => {
+          closedMap.set(iss.ticketNumber, iss);
+        });
+        closedTicketsList.forEach((ct) => {
+          if (!closedMap.has(ct.ticketNumber)) {
+            closedMap.set(ct.ticketNumber, {
+              ...ct,
+              reporter: { name: ct.reporterName, email: ct.reporterEmail },
+              assignee: { name: ct.assigneeName, email: ct.assigneeEmail },
+              serviceAsset: { name: ct.serviceAssetName },
+            });
+          }
+        });
+        const closedIssuesList = Array.from(closedMap.values());
+
         const filteredClosed = closedIssuesList.filter((iss) => {
           const q = closedSearchQuery.toLowerCase();
           const matchesSearch =
@@ -2683,7 +2827,7 @@ export default function WorkMateEnterpriseApp() {
         let countedTurnarounds = 0;
         closedIssuesList.forEach((iss) => {
           const created = new Date(iss.createdAt).getTime();
-          const closedAt = (iss.resolvedAt ? new Date(iss.resolvedAt) : new Date(iss.updatedAt)).getTime();
+          const closedAt = (iss.closedAt || iss.resolvedAt || iss.updatedAt ? new Date(iss.closedAt || iss.resolvedAt || iss.updatedAt) : new Date()).getTime();
           if (closedAt > created) {
             totalTurnaroundMs += closedAt - created;
             countedTurnarounds++;
@@ -2699,22 +2843,32 @@ export default function WorkMateEnterpriseApp() {
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <h2 style={{ fontSize: "20px", fontWeight: "800", color: "#fff" }}>Closed Tickets Archive & Audit History</h2>
                   <span className="closed-history-badge">
-                    <span>📁</span> {closedIssuesList.length} Archived
+                    <span>📁</span> {closedIssuesList.length} Archived in DB
                   </span>
                 </div>
                 <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
-                  Permanent historical audit log of all completed and closed incidents with resolution notes, turnaround duration, and root-cause verification.
+                  Permanent historical audit log stored in the dedicated ClosedTicket database archive with resolution notes, turnaround duration, and Excel/CSV download.
                 </p>
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                 <button
                   className="export-btn"
                   onClick={handleExportClosedTicketsCsv}
-                  title="Export closed tickets and audit trail to CSV file"
+                  title="Export closed tickets and audit trail to CSV file (UTF-8 Excel format)"
                 >
                   <span>📥</span> Export Closed Tickets (CSV)
                 </button>
+
+                <a
+                  href={`${API_BASE}/api/closed-tickets/export`}
+                  download={`WorkMate_Closed_Tickets_Report_${new Date().toISOString().slice(0, 10)}.csv`}
+                  className="btn btn-secondary"
+                  style={{ height: "34px", padding: "0 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none" }}
+                  title="Direct server CSV download from backend database"
+                >
+                  <span>🌐</span> Server CSV
+                </a>
               </div>
             </div>
 
@@ -2968,208 +3122,473 @@ export default function WorkMateEnterpriseApp() {
         );
       })()}
 
-      {/* TAB: STAFF ATTENDANCE & LOGIN TRACKING */}
-      {activeTab === "attendance" && (
-        <div>
-          {/* Header & Export Bar */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <h2 style={{ fontSize: "20px", fontWeight: "800", color: "#fff" }}>Staff Attendance & Login Audit</h2>
-                <span className="attendance-badge-present">
-                  <span className="attendance-dot"></span> Active Tracking
-                </span>
-              </div>
-              <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
-                Accurate login logs and shift presence tracking for operational attendance monitoring with one-click report export.
-              </p>
-            </div>
+      {/* TAB: STAFF ATTENDANCE & SHIFT PUNCH TERMINAL */}
+      {activeTab === "attendance" && (() => {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const yDate = new Date();
+        yDate.setDate(yDate.getDate() - 1);
+        const yesterdayStr = yDate.toISOString().slice(0, 10);
 
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              {activeUser && (
+        const myTodayPunchIn = activeUser
+          ? attendanceLogs.find(
+              (l) =>
+                (l.userId === activeUser.id || l.userEmail.toLowerCase() === activeUser.email.toLowerCase()) &&
+                (l.shiftDate === todayStr || new Date(l.timestamp).toISOString().slice(0, 10) === todayStr) &&
+                l.action === "PUNCH_IN"
+            )
+          : null;
+
+        const myTodayPunchOut = activeUser
+          ? attendanceLogs.find(
+              (l) =>
+                (l.userId === activeUser.id || l.userEmail.toLowerCase() === activeUser.email.toLowerCase()) &&
+                (l.shiftDate === todayStr || new Date(l.timestamp).toISOString().slice(0, 10) === todayStr) &&
+                l.action === "PUNCH_OUT"
+            )
+          : null;
+
+        const filteredAttendance = attendanceLogs.filter((log) => {
+          const q = attendanceSearch.toLowerCase();
+          const matchesSearch =
+            !q ||
+            log.userName.toLowerCase().includes(q) ||
+            log.userEmail.toLowerCase().includes(q) ||
+            (log.department && log.department.toLowerCase().includes(q)) ||
+            (log.remarks && log.remarks.toLowerCase().includes(q)) ||
+            log.clientType.toLowerCase().includes(q);
+
+          const matchesRole = attendanceRoleFilter === "ALL" || log.role === attendanceRoleFilter;
+          return matchesSearch && matchesRole;
+        });
+
+        return (
+          <div>
+            {/* Header & Export Bar */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <h2 style={{ fontSize: "20px", fontWeight: "800", color: "#fff" }}>Staff Attendance & Shift Punch Terminal</h2>
+                  <span className="attendance-badge-present">
+                    <span className="attendance-dot"></span> Shift 9:00 AM – 5:30 PM
+                  </span>
+                  <span style={{
+                    fontSize: "11px",
+                    fontWeight: "700",
+                    background: "rgba(16, 185, 129, 0.15)",
+                    color: "#34d399",
+                    border: "1px solid rgba(16, 185, 129, 0.3)",
+                    padding: "3px 8px",
+                    borderRadius: "20px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px"
+                  }}>
+                    🛡️ 30m Grace Buffer
+                  </span>
+                  <span style={{
+                    fontSize: "11px",
+                    fontWeight: "700",
+                    background: "rgba(139, 92, 246, 0.15)",
+                    color: "#c084fc",
+                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                    padding: "3px 8px",
+                    borderRadius: "20px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px"
+                  }}>
+                    🗓️ 30-Day Auto-Scrap Cycle
+                  </span>
+                </div>
+                <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
+                  Everyday attendance is marked by punching at 9:00 AM (with 30-min relaxation buffer) and logout at 5:30 PM. 8h 30m shift cooldown operates upon logout. Historical records roll on a fresh 30-day cycle.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                {activeUser?.role === "SUPER_ADMIN" && (
+                  <button
+                    className="btn btn-secondary"
+                    style={{ height: "34px", padding: "0 10px", fontSize: "12px", border: "1px solid rgba(244, 63, 94, 0.3)" }}
+                    onClick={handleScrapOldAttendance}
+                    title="Run retention policy: Scrap records older than 30 days"
+                  >
+                    <span>🧹</span> Scrap Logs &gt; 30 Days
+                  </button>
+                )}
+
                 <button
-                  className="btn btn-primary"
-                  style={{ height: "34px", padding: "0 12px", fontSize: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}
-                  onClick={() => {
-                    void recordAttendance(activeUser, "SHIFT_CHECKIN");
-                    triggerToast("success", "Shift Attendance Logged", `Attendance check-in logged for ${activeUser.name}.`, "ATTENDANCE");
-                  }}
-                  title="Punch immediate attendance stamp"
+                  className="export-btn"
+                  onClick={handleExportAttendanceCsv}
+                  title="Export filtered attendance records to CSV (Excel compatible)"
                 >
-                  <span>⏱️</span> Log Attendance Punch
+                  <span>📥</span> Export Report (CSV)
                 </button>
-              )}
 
-              <button
-                className="export-btn"
-                onClick={handleExportAttendanceCsv}
-                title="Export complete attendance records to CSV"
-              >
-                <span>📥</span> Export Attendance Report (CSV)
-              </button>
+                <a
+                  href={`${API_BASE}/api/attendance/export${attendanceDateFilter ? `?date=${attendanceDateFilter}` : ""}`}
+                  download={`WorkMate_Attendance_Report${attendanceDateFilter ? `_${attendanceDateFilter}` : ""}.csv`}
+                  className="btn btn-secondary"
+                  style={{ height: "34px", padding: "0 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none" }}
+                  title="Direct server-side CSV download"
+                >
+                  <span>🌐</span> Server CSV
+                </a>
 
-              <button
-                className="btn btn-secondary"
-                style={{ height: "34px", padding: "0 10px", fontSize: "12px" }}
-                onClick={() => void fetchAttendanceLogs()}
-                title="Refresh attendance records"
-              >
-                <span>🔄</span> Refresh
-              </button>
-            </div>
-          </div>
-
-          {/* Metric Summary Grid */}
-          <div className="attendance-summary-grid">
-            <div className="attendance-metric-card">
-              <div className="attendance-metric-icon" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#34d399" }}>
-                ⏱️
-              </div>
-              <div>
-                <div className="attendance-metric-val">{attendanceStats.todayCount}</div>
-                <div className="attendance-metric-label">Today's Total Check-ins</div>
+                <button
+                  className="btn btn-secondary"
+                  style={{ height: "34px", padding: "0 10px", fontSize: "12px" }}
+                  onClick={() => void fetchAttendanceLogs(attendanceDateFilter)}
+                  title="Refresh attendance records"
+                >
+                  <span>🔄</span> Refresh
+                </button>
               </div>
             </div>
 
-            <div className="attendance-metric-card">
-              <div className="attendance-metric-icon" style={{ background: "rgba(37, 99, 235, 0.15)", color: "#60a5fa" }}>
-                👥
-              </div>
-              <div>
-                <div className="attendance-metric-val">{attendanceStats.uniqueStaffToday}</div>
-                <div className="attendance-metric-label">Unique Staff On-Duty Today</div>
-              </div>
-            </div>
-
-            <div className="attendance-metric-card">
-              <div className="attendance-metric-icon" style={{ background: "rgba(139, 92, 246, 0.15)", color: "#a78bfa" }}>
-                📜
-              </div>
-              <div>
-                <div className="attendance-metric-val">{attendanceStats.totalCount}</div>
-                <div className="attendance-metric-label">Total Historical Logs</div>
-              </div>
-            </div>
-
-            <div className="attendance-metric-card">
-              <div className="attendance-metric-icon" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#fbbf24" }}>
-                👤
-              </div>
-              <div>
-                <div className="attendance-metric-val" style={{ fontSize: "16px", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap", maxWidth: "160px" }}>
-                  {activeUser ? activeUser.name : "None"}
-                </div>
-                <div className="attendance-metric-label">
-                  {activeUser ? `Active (${activeUser.role})` : "Signed Out"}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Search & Filter Controls */}
-          <div className="filter-bar" style={{ marginBottom: "18px" }}>
-            <div className="search-box">
-              <span className="search-icon">🔍</span>
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Search staff name, email, department, or client..."
-                value={attendanceSearch}
-                onChange={(e) => setAttendanceSearch(e.target.value)}
-              />
-            </div>
-
-            <select
-              className="filter-select"
-              value={attendanceRoleFilter}
-              onChange={(e) => setAttendanceRoleFilter(e.target.value)}
-            >
-              <option value="ALL">All Roles</option>
-              <option value="SUPER_ADMIN">Super Admin</option>
-              <option value="ADMIN">Admin</option>
-              <option value="MANAGER">Manager</option>
-              <option value="ENGINEER">Engineer</option>
-              <option value="USER">User</option>
-            </select>
-
-            {(attendanceSearch || attendanceRoleFilter !== "ALL") && (
-              <button
-                className="btn btn-secondary"
-                style={{ height: "36px", padding: "0 12px", fontSize: "12px" }}
-                onClick={() => {
-                  setAttendanceSearch("");
-                  setAttendanceRoleFilter("ALL");
-                }}
-              >
-                Clear Filters
-              </button>
-            )}
-          </div>
-
-          {/* Attendance Records Table */}
-          {attendanceLoading && attendanceLogs.length === 0 ? (
-            <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
-              Loading attendance audit logs...
-            </div>
-          ) : attendanceLogs.length === 0 ? (
+            {/* Shift Terminal & Real-Time Punch Widget */}
             <div style={{
-              background: "var(--bg-card)",
-              border: "1px dashed var(--border-subtle)",
-              borderRadius: "12px",
-              padding: "60px 24px",
-              textAlign: "center",
+              background: "linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%)",
+              border: "1px solid rgba(56, 189, 248, 0.25)",
+              borderRadius: "16px",
+              padding: "20px 24px",
+              marginBottom: "22px",
+              boxShadow: "0 12px 30px rgba(0, 0, 0, 0.35)",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: "20px",
+              alignItems: "center"
             }}>
-              <div style={{ fontSize: "40px", marginBottom: "12px" }}>⏱️</div>
-              <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#fff", marginBottom: "6px" }}>
-                No Attendance Records Logged Yet
-              </h3>
-              <p style={{ color: "var(--text-muted)", fontSize: "13px", maxWidth: "460px", margin: "0 auto 16px" }}>
-                Attendance records are created automatically whenever a staff member signs in, switches accounts, or punches their attendance.
-              </p>
-              {activeUser && (
+              {/* Left Column: Live Clock & Shift Policy Info */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                  <div style={{
+                    fontSize: "26px",
+                    fontWeight: "900",
+                    fontFamily: "JetBrains Mono, monospace",
+                    color: "#38bdf8",
+                    letterSpacing: "1px",
+                    textShadow: "0 0 12px rgba(56, 189, 248, 0.4)",
+                  }}>
+                    ⏰ {currentLiveTime || "09:00:00 AM"}
+                  </div>
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Live Shift Time
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "12px", color: "#cbd5e1" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ color: "#38bdf8" }}>•</span>
+                    <span><strong>Official Timing:</strong> 09:00 AM to 05:30 PM (8 Hours 30 Minutes standard)</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ color: "#34d399" }}>•</span>
+                    <span><strong>Grace Buffer:</strong> Arrival up to 09:30 AM is marked On-Time (30m relaxation)</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ color: "#f59e0b" }}>•</span>
+                    <span><strong>Shift Rest Cooldown:</strong> 8h 30m cooldown is enforced upon logout before next session</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ color: "#a78bfa" }}>•</span>
+                    <span><strong>Auto-Scrap Cycle:</strong> Daily records save permanently for 30 days, then new cycle runs</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: User Shift Punch Controls */}
+              <div style={{
+                background: "rgba(255, 255, 255, 0.03)",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+                borderRadius: "12px",
+                padding: "16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+                  <div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>Active Employee</div>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: "#fff" }}>
+                      {activeUser ? activeUser.name : "Guest / Not Signed In"}
+                    </div>
+                  </div>
+
+                  <div>
+                    {myTodayPunchOut ? (
+                      <span className="badge badge-resolved" style={{ fontSize: "11px", padding: "4px 10px" }}>
+                        ✅ Shift Completed
+                      </span>
+                    ) : myTodayPunchIn ? (
+                      <span className="badge badge-progress" style={{ fontSize: "11px", padding: "4px 10px" }}>
+                        🟢 On Duty (Punched In)
+                      </span>
+                    ) : (
+                      <span className="badge badge-assigned" style={{ fontSize: "11px", padding: "4px 10px" }}>
+                        ⏳ Not Punched Today
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Punch Details or Timestamps */}
+                {myTodayPunchIn && (
+                  <div style={{ fontSize: "12px", color: "var(--text-muted)", display: "flex", gap: "14px", flexWrap: "wrap" }}>
+                    <span>In: <strong style={{ color: "#38bdf8" }}>{new Date(myTodayPunchIn.punchIn || myTodayPunchIn.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong></span>
+                    {myTodayPunchOut && <span>Out: <strong style={{ color: "#34d399" }}>{new Date(myTodayPunchOut.punchOut || myTodayPunchOut.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong></span>}
+                    {myTodayPunchOut && <span>Duration: <strong style={{ color: "#f8fafc" }}>{myTodayPunchOut.workHours ? `${myTodayPunchOut.workHours}h` : "8.5h"}</strong></span>}
+                    <span>Status: <strong style={{ color: myTodayPunchIn.status === "ON_TIME" ? "#34d399" : "#fbbf24" }}>{myTodayPunchIn.status}</strong></span>
+                  </div>
+                )}
+
+                {/* Punch Action Buttons */}
+                {activeUser ? (
+                  <div style={{ display: "flex", gap: "10px", marginTop: "4px", flexWrap: "wrap" }}>
+                    {!myTodayPunchIn ? (
+                      <button
+                        className="btn btn-primary"
+                        style={{ flex: 1, minHeight: "40px", fontSize: "13px", fontWeight: "700", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
+                        disabled={punchLoading}
+                        onClick={() => void handlePunchAttendance("PUNCH_IN")}
+                      >
+                        <span>⏱️</span> {punchLoading ? "Recording..." : "Punch In (Shift Start)"}
+                      </button>
+                    ) : !myTodayPunchOut ? (
+                      <button
+                        className="btn btn-secondary"
+                        style={{
+                          flex: 1,
+                          minHeight: "40px",
+                          fontSize: "13px",
+                          fontWeight: "700",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "8px",
+                          background: "rgba(239, 68, 68, 0.15)",
+                          color: "#f87171",
+                          border: "1px solid rgba(239, 68, 68, 0.4)"
+                        }}
+                        disabled={punchLoading}
+                        onClick={() => void handlePunchAttendance("PUNCH_OUT")}
+                      >
+                        <span>🚪</span> {punchLoading ? "Concluding..." : "Punch Out (Shift End at 5:30 PM)"}
+                      </button>
+                    ) : (
+                      <div style={{ fontSize: "12px", color: "#34d399", padding: "8px 0" }}>
+                        ✨ Shift logged for today ({todayStr}). Your next cycle will run tomorrow morning at 9:00 AM.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                    Please sign in above to mark your daily attendance punch.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Metric Summary Grid */}
+            <div className="attendance-summary-grid">
+              <div className="attendance-metric-card">
+                <div className="attendance-metric-icon" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#34d399" }}>
+                  ⏱️
+                </div>
+                <div>
+                  <div className="attendance-metric-val">{attendanceStats.todayCount}</div>
+                  <div className="attendance-metric-label">Today's Check-ins ({todayStr})</div>
+                </div>
+              </div>
+
+              <div className="attendance-metric-card">
+                <div className="attendance-metric-icon" style={{ background: "rgba(37, 99, 235, 0.15)", color: "#60a5fa" }}>
+                  👥
+                </div>
+                <div>
+                  <div className="attendance-metric-val">{attendanceStats.uniqueStaffToday}</div>
+                  <div className="attendance-metric-label">Unique Staff On-Duty Today</div>
+                </div>
+              </div>
+
+              <div className="attendance-metric-card">
+                <div className="attendance-metric-icon" style={{ background: "rgba(139, 92, 246, 0.15)", color: "#a78bfa" }}>
+                  📜
+                </div>
+                <div>
+                  <div className="attendance-metric-val">{attendanceStats.totalCount}</div>
+                  <div className="attendance-metric-label">{attendanceDateFilter ? `Logs on ${attendanceDateFilter}` : "Active 30-Day Cycle Logs"}</div>
+                </div>
+              </div>
+
+              <div className="attendance-metric-card">
+                <div className="attendance-metric-icon" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#fbbf24" }}>
+                  🛡️
+                </div>
+                <div>
+                  <div className="attendance-metric-val">30-Day Cycle</div>
+                  <div className="attendance-metric-label">Auto-Scraping Active</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Search, Date Filter & Role Filter Bar */}
+            <div className="filter-bar" style={{ marginBottom: "18px", flexWrap: "wrap", gap: "10px" }}>
+              <div className="search-box">
+                <span className="search-icon">🔍</span>
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder="Search staff name, email, department, or shift remarks..."
+                  value={attendanceSearch}
+                  onChange={(e) => setAttendanceSearch(e.target.value)}
+                />
+              </div>
+
+              {/* Date Filter Control */}
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "var(--bg-card)", border: "1px solid var(--border-subtle)", borderRadius: "8px", padding: "0 10px", height: "38px" }}>
+                <span style={{ fontSize: "14px" }}>📅</span>
+                <input
+                  type="date"
+                  value={attendanceDateFilter}
+                  onChange={(e) => {
+                    const newDate = e.target.value;
+                    setAttendanceDateFilter(newDate);
+                    void fetchAttendanceLogs(newDate);
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#fff",
+                    fontSize: "12px",
+                    outline: "none",
+                    fontFamily: "inherit"
+                  }}
+                  title="Filter attendance by specific date"
+                />
+              </div>
+
+              {/* Quick Date Presets */}
+              <div style={{ display: "flex", gap: "6px" }}>
                 <button
-                  className="btn btn-primary"
+                  className={`btn ${attendanceDateFilter === todayStr ? "btn-primary" : "btn-secondary"}`}
+                  style={{ height: "38px", padding: "0 10px", fontSize: "11.5px" }}
                   onClick={() => {
-                    void recordAttendance(activeUser, "LOGIN");
-                    triggerToast("success", "Shift Attendance Recorded", `Attendance recorded for ${activeUser.name}.`, "ATTENDANCE");
+                    setAttendanceDateFilter(todayStr);
+                    void fetchAttendanceLogs(todayStr);
                   }}
                 >
-                  Log Your Attendance Now
+                  Today
+                </button>
+
+                <button
+                  className={`btn ${attendanceDateFilter === yesterdayStr ? "btn-primary" : "btn-secondary"}`}
+                  style={{ height: "38px", padding: "0 10px", fontSize: "11.5px" }}
+                  onClick={() => {
+                    setAttendanceDateFilter(yesterdayStr);
+                    void fetchAttendanceLogs(yesterdayStr);
+                  }}
+                >
+                  Yesterday
+                </button>
+
+                {attendanceDateFilter && (
+                  <button
+                    className="btn btn-secondary"
+                    style={{ height: "38px", padding: "0 10px", fontSize: "11.5px" }}
+                    onClick={() => {
+                      setAttendanceDateFilter("");
+                      void fetchAttendanceLogs("");
+                    }}
+                  >
+                    All Dates
+                  </button>
+                )}
+              </div>
+
+              <select
+                className="filter-select"
+                value={attendanceRoleFilter}
+                onChange={(e) => setAttendanceRoleFilter(e.target.value)}
+              >
+                <option value="ALL">All Roles</option>
+                <option value="SUPER_ADMIN">Super Admin</option>
+                <option value="ADMIN">Admin</option>
+                <option value="MANAGER">Manager</option>
+                <option value="ENGINEER">Engineer</option>
+                <option value="USER">User</option>
+              </select>
+
+              {(attendanceSearch || attendanceRoleFilter !== "ALL" || attendanceDateFilter) && (
+                <button
+                  className="btn btn-secondary"
+                  style={{ height: "38px", padding: "0 12px", fontSize: "12px" }}
+                  onClick={() => {
+                    setAttendanceSearch("");
+                    setAttendanceRoleFilter("ALL");
+                    setAttendanceDateFilter("");
+                    void fetchAttendanceLogs("");
+                  }}
+                >
+                  Clear Filters
                 </button>
               )}
             </div>
-          ) : (
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Staff Member</th>
-                    <th>Email Address</th>
-                    <th>Role & Squad</th>
-                    <th>Login Date & Time</th>
-                    <th>Access Portal</th>
-                    <th>Action</th>
-                    <th>Attendance Status</th>
-                    <th>IP / Client Network</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {attendanceLogs
-                    .filter((log) => {
-                      const q = attendanceSearch.toLowerCase();
-                      const matchesSearch =
-                        !q ||
-                        log.userName.toLowerCase().includes(q) ||
-                        log.userEmail.toLowerCase().includes(q) ||
-                        (log.department && log.department.toLowerCase().includes(q)) ||
-                        log.clientType.toLowerCase().includes(q);
 
-                      const matchesRole = attendanceRoleFilter === "ALL" || log.role === attendanceRoleFilter;
-                      return matchesSearch && matchesRole;
-                    })
-                    .map((log) => {
+            {/* Attendance Records Table */}
+            {attendanceLoading && attendanceLogs.length === 0 ? (
+              <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+                Loading attendance audit logs...
+              </div>
+            ) : filteredAttendance.length === 0 ? (
+              <div style={{
+                background: "var(--bg-card)",
+                border: "1px dashed var(--border-subtle)",
+                borderRadius: "12px",
+                padding: "60px 24px",
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize: "40px", marginBottom: "12px" }}>⏱️</div>
+                <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#fff", marginBottom: "6px" }}>
+                  {attendanceDateFilter ? `No Attendance Records Found for ${attendanceDateFilter}` : "No Attendance Records Logged Yet"}
+                </h3>
+                <p style={{ color: "var(--text-muted)", fontSize: "13px", maxWidth: "460px", margin: "0 auto 16px" }}>
+                  {attendanceDateFilter
+                    ? "Try picking another date or click 'All Dates' to view the entire 30-day attendance trail."
+                    : "Attendance records are created when employees punch in for their 9:00 AM shift or punch out at 5:30 PM."}
+                </p>
+                {activeUser && !attendanceDateFilter && (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => void handlePunchAttendance("PUNCH_IN")}
+                  >
+                    Punch In Now
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="table-container">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Staff Member</th>
+                      <th>Email Address</th>
+                      <th>Role & Squad</th>
+                      <th>Shift Date</th>
+                      <th>Punch In</th>
+                      <th>Punch Out</th>
+                      <th>Duration</th>
+                      <th>Action / Status</th>
+                      <th>Shift Remarks</th>
+                      <th>Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAttendance.map((log) => {
                       const d = new Date(log.timestamp);
-                      const isToday = new Date().toDateString() === d.toDateString();
+                      const isToday = todayStr === (log.shiftDate || d.toISOString().slice(0, 10));
+                      const punchInDisplay = log.punchIn ? new Date(log.punchIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+                      const punchOutDisplay = log.punchOut ? new Date(log.punchOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
 
                       return (
                         <tr key={log.id}>
@@ -3200,50 +3619,51 @@ export default function WorkMateEnterpriseApp() {
                             </div>
                           </td>
                           <td>
-                            <div style={{ fontWeight: "600", color: isToday ? "#38bdf8" : "#cbd5e1", fontSize: "12.5px" }}>
-                              {d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
-                            </div>
-                            <div style={{ fontSize: "11px", color: "var(--text-dim)", fontFamily: "JetBrains Mono" }}>
-                              {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            <div style={{ fontWeight: "700", color: isToday ? "#38bdf8" : "#cbd5e1", fontSize: "12.5px" }}>
+                              {log.shiftDate || d.toISOString().slice(0, 10)}
                             </div>
                           </td>
                           <td>
-                            <span style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              fontSize: "11px",
-                              background: "rgba(255,255,255,0.05)",
-                              padding: "2px 8px",
-                              borderRadius: "6px",
-                              color: "#cbd5e1",
-                            }}>
-                              {log.clientType === "MOBILE_APP" ? "📱 Mobile App" : "🌐 Web Portal"}
+                            <span style={{ fontFamily: "JetBrains Mono", fontSize: "12px", color: log.punchIn ? "#38bdf8" : "#94a3b8" }}>
+                              {punchInDisplay}
                             </span>
                           </td>
                           <td>
-                            <span style={{ fontSize: "11.5px", fontWeight: "600", color: "#94a3b8" }}>
-                              {log.action}
+                            <span style={{ fontFamily: "JetBrains Mono", fontSize: "12px", color: log.punchOut ? "#34d399" : "#94a3b8" }}>
+                              {punchOutDisplay}
                             </span>
                           </td>
                           <td>
-                            <span className="attendance-badge-present">
-                              <span className="attendance-dot"></span>
-                              {log.status || "PRESENT"}
+                            <span style={{ fontWeight: "700", fontSize: "12px", color: log.workHours ? "#e2e8f0" : "#64748b" }}>
+                              {log.workHours ? `${log.workHours}h` : "—"}
                             </span>
                           </td>
-                          <td style={{ fontFamily: "JetBrains Mono", fontSize: "11px", color: "var(--text-dim)" }}>
-                            {log.ipAddress || "127.0.0.1"}
+                          <td>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                              <span style={{ fontSize: "10.5px", fontWeight: "700", color: log.action === "PUNCH_IN" ? "#38bdf8" : log.action === "PUNCH_OUT" ? "#34d399" : "#94a3b8" }}>
+                                {log.action}
+                              </span>
+                              <span className={`badge ${log.status === "ON_TIME" || log.status === "COMPLETED" ? "badge-resolved" : log.status === "LATE" ? "badge-urgent" : "badge-assigned"}`} style={{ fontSize: "10px", width: "fit-content" }}>
+                                {log.status || "PRESENT"}
+                              </span>
+                            </div>
+                          </td>
+                          <td style={{ maxWidth: "240px", fontSize: "11.5px", color: "var(--text-muted)" }}>
+                            {log.remarks || "Standard Shift Attendance Record"}
+                          </td>
+                          <td style={{ fontSize: "11px", color: "var(--text-dim)", fontFamily: "JetBrains Mono" }}>
+                            {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                           </td>
                         </tr>
                       );
                     })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* TAB 3: APPLICATIONS & MONITORED WEBSITES */}
       {activeTab === "services" && (

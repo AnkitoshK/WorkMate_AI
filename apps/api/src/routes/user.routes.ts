@@ -57,6 +57,11 @@ router.post("/login", async (req, res, next) => {
         role: true,
         department: true,
         avatar: true,
+        lastLoginAt: true,
+        lastLogoutAt: true,
+        lastPunchIn: true,
+        lastPunchOut: true,
+        shiftStatus: true,
         _count: {
           select: {
             assignedIssues: true,
@@ -94,39 +99,88 @@ router.post("/login", async (req, res, next) => {
       });
     }
 
-    const { password: _, ...userWithoutPassword } = user;
-
-    // Automatically record attendance log for login tracking
-    try {
-      const clientIp =
-        (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
-        req.socket.remoteAddress ||
-        "127.0.0.1";
-      const userAgent = (req.headers["user-agent"] as string) || "Web Browser";
-
-      await prisma.attendanceLog.create({
-        data: {
-          userId: user.id,
-          userName: user.name,
-          userEmail: user.email.toLowerCase(),
-          role: user.role,
-          department: user.department || "Operations",
-          clientType: (req.headers["x-client-type"] as string) || "WEB_PORTAL",
-          action: "LOGIN",
-          status: "PRESENT",
-          ipAddress: clientIp,
-          userAgent: userAgent.slice(0, 255),
-        },
-      });
-    } catch (attendanceErr) {
-      console.error("Attendance log creation notice:", attendanceErr);
+    // Shift Cooldown Check:
+    // If user logged out recently, enforce 8 hours and 30 minutes shift cycle cooldown
+    // (Exempt SUPER_ADMIN and ADMIN so operations and administrative overrides are unrestricted)
+    if (user.lastLogoutAt && user.role !== "SUPER_ADMIN" && user.role !== "ADMIN") {
+      const cooldownMs = 8.5 * 60 * 60 * 1000; // 8 hours 30 minutes
+      const elapsedMs = Date.now() - new Date(user.lastLogoutAt).getTime();
+      if (elapsedMs < cooldownMs) {
+        const remainingMs = cooldownMs - elapsedMs;
+        const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
+        const remainingMinutes = Math.ceil((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+        const allowAt = new Date(Date.now() + remainingMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        return res.status(403).json({
+          error: `Shift cooldown active: You logged out of your shift. Per 8h 30m shift cycle rules, you can log in again at ${allowAt} (remaining: ${remainingHours}h ${remainingMinutes}m).`,
+          cooldownRemainingMs: remainingMs,
+          canLoginAt: allowAt,
+        });
+      }
     }
+
+    // Record login timestamp (attendance is explicitly marked by punch, not web login)
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    const { password: _, ...userWithoutPassword } = user;
 
     res.json({
       success: true,
       user: userWithoutPassword,
       message: `Welcome back, ${user.name}!`,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/users/logout - Record logout timestamp for 8h 30m cooldown tracking
+router.post("/logout", async (req, res, next) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: "User ID is required" });
+
+    const now = new Date();
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        lastLogoutAt: now,
+        shiftStatus: "OFF_DUTY",
+      },
+      select: {
+        id: true,
+        name: true,
+        lastLogoutAt: true,
+        shiftStatus: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `Logged out ${updated.name}. Shift session concluded.`,
+      lastLogoutAt: updated.lastLogoutAt,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/users/reset-cooldown - SuperAdmin / Manager override to reset shift cooldown
+router.post("/reset-cooldown", async (req, res, next) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: "User ID is required" });
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        lastLogoutAt: null,
+      },
+    });
+
+    res.json({ success: true, message: "Shift cycle cooldown successfully cleared." });
   } catch (error) {
     next(error);
   }

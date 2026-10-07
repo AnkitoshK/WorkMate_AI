@@ -243,7 +243,7 @@ export class IssueService {
       updateData.closedAt = null;
     }
 
-    return prisma.issue.update({
+    const updated = await prisma.issue.update({
       where: { id },
       data: updateData,
       include: {
@@ -252,6 +252,76 @@ export class IssueService {
         serviceAsset: true,
       },
     });
+
+    if (data.status === IssueStatus.CLOSED) {
+      const createdTime = updated.createdAt.getTime();
+      const closedTime = (updated.closedAt || new Date()).getTime();
+      const durationMs = Math.max(0, closedTime - createdTime);
+      const turnaroundHours = Math.round((durationMs / 3600000) * 10) / 10;
+      const hours = Math.floor(durationMs / 3600000);
+      const mins = Math.floor((durationMs % 3600000) / 60000);
+      const durationStr = `${hours}h ${mins}m`;
+
+      await prisma.closedTicket.upsert({
+        where: { ticketNumber: updated.ticketNumber },
+        update: {
+          title: updated.title,
+          description: updated.description,
+          status: "CLOSED",
+          category: updated.category,
+          priority: updated.priority,
+          department: updated.department,
+          source: updated.source,
+          affectedUrl: updated.affectedUrl,
+          location: updated.location,
+          resolutionNotes: updated.resolutionNotes || "Resolved per standard operations procedure",
+          aiSummary: updated.aiSummary,
+          aiRootCause: updated.aiRootCause || "N/A",
+          reporterId: updated.reporter?.id,
+          reporterName: updated.reporter?.name || "Unknown",
+          reporterEmail: updated.reporter?.email || "",
+          assigneeId: updated.assignee?.id,
+          assigneeName: updated.assignee?.name || "Lead Engineer",
+          assigneeEmail: updated.assignee?.email || "",
+          serviceAssetName: updated.serviceAsset?.name || "Standard Asset",
+          turnaroundDuration: durationStr,
+          turnaroundHours,
+          closedAt: updated.closedAt || new Date(),
+        },
+        create: {
+          ticketNumber: updated.ticketNumber,
+          originalIssueId: updated.id,
+          title: updated.title,
+          description: updated.description,
+          status: "CLOSED",
+          category: updated.category,
+          priority: updated.priority,
+          department: updated.department,
+          source: updated.source,
+          affectedUrl: updated.affectedUrl,
+          location: updated.location,
+          resolutionNotes: updated.resolutionNotes || "Resolved per standard operations procedure",
+          aiSummary: updated.aiSummary,
+          aiRootCause: updated.aiRootCause || "N/A",
+          reporterId: updated.reporter?.id,
+          reporterName: updated.reporter?.name || "Unknown",
+          reporterEmail: updated.reporter?.email || "",
+          assigneeId: updated.assignee?.id,
+          assigneeName: updated.assignee?.name || "Lead Engineer",
+          assigneeEmail: updated.assignee?.email || "",
+          serviceAssetName: updated.serviceAsset?.name || "Standard Asset",
+          turnaroundDuration: durationStr,
+          turnaroundHours,
+          closedAt: updated.closedAt || new Date(),
+        },
+      });
+    } else if (data.status === IssueStatus.OPEN || data.status === IssueStatus.IN_PROGRESS) {
+      await prisma.closedTicket.deleteMany({
+        where: { ticketNumber: updated.ticketNumber },
+      });
+    }
+
+    return updated;
   }
 
   static async deleteIssue(id: string) {
