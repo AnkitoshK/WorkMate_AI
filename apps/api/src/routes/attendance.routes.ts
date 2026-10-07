@@ -346,6 +346,31 @@ router.get("/export", async (req, res, next) => {
       orderBy: { timestamp: "desc" },
     });
 
+    // Pre-calculate shift punch pairings (to correlate punch in & out across records on same date)
+    const shiftPunchMap = new Map<string, { punchIn?: Date; punchOut?: Date; workHours?: number }>();
+    logs.forEach((r) => {
+      const key = `${r.userEmail || r.userId}_${r.shiftDate || new Date(r.timestamp).toISOString().slice(0, 10)}`;
+      const existing = shiftPunchMap.get(key) || {};
+      if (r.punchIn) {
+        const pIn = new Date(r.punchIn);
+        if (!existing.punchIn || pIn < existing.punchIn) existing.punchIn = pIn;
+      } else if (r.action === "PUNCH_IN") {
+        const pIn = new Date(r.timestamp);
+        if (!existing.punchIn || pIn < existing.punchIn) existing.punchIn = pIn;
+      }
+      if (r.punchOut) {
+        const pOut = new Date(r.punchOut);
+        if (!existing.punchOut || pOut > existing.punchOut) existing.punchOut = pOut;
+      } else if (r.action === "PUNCH_OUT") {
+        const pOut = new Date(r.timestamp);
+        if (!existing.punchOut || pOut > existing.punchOut) existing.punchOut = pOut;
+      }
+      if (r.workHours && (!existing.workHours || r.workHours > existing.workHours)) {
+        existing.workHours = r.workHours;
+      }
+      shiftPunchMap.set(key, existing);
+    });
+
     const headers = [
       "Log ID",
       "Shift Date",
@@ -357,16 +382,54 @@ router.get("/export", async (req, res, next) => {
       "Shift Status",
       "Punch In Time",
       "Punch Out Time",
-      "Logged Hours",
+      "Total Time (Punch In - Punch Out)",
+      "Total Hours (Decimal Calculation)",
       "Shift Remarks",
       "Client Type",
       "Timestamp",
     ];
 
     const rows = logs.map((log) => {
-      const punchInStr = log.punchIn ? new Date(log.punchIn).toLocaleTimeString() : "N/A";
-      const punchOutStr = log.punchOut ? new Date(log.punchOut).toLocaleTimeString() : "N/A";
-      const hoursStr = log.workHours ? `${log.workHours}h` : "N/A";
+      const key = `${log.userEmail || log.userId}_${log.shiftDate || new Date(log.timestamp).toISOString().slice(0, 10)}`;
+      const shiftData = shiftPunchMap.get(key);
+
+      const effectivePunchIn = log.punchIn ? new Date(log.punchIn) : shiftData?.punchIn;
+      const effectivePunchOut = log.punchOut ? new Date(log.punchOut) : shiftData?.punchOut;
+
+      const punchInStr = effectivePunchIn
+        ? effectivePunchIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+        : (log.action === "PUNCH_IN" ? new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "N/A");
+
+      const punchOutStr = effectivePunchOut
+        ? effectivePunchOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+        : (log.action === "PUNCH_OUT" ? new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "N/A");
+
+      let totalTimeStr = "N/A";
+      let decimalHours = "0.00";
+
+      if (effectivePunchIn && effectivePunchOut) {
+        const diffMs = Math.max(0, effectivePunchOut.getTime() - effectivePunchIn.getTime());
+        const totalMinutes = Math.floor(diffMs / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        totalTimeStr = `${hours}h ${mins}m`;
+        decimalHours = (diffMs / 3600000).toFixed(2);
+      } else if (log.workHours != null && Number(log.workHours) > 0) {
+        const totalMinutes = Math.round(Number(log.workHours) * 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        totalTimeStr = `${hours}h ${mins}m`;
+        decimalHours = Number(log.workHours).toFixed(2);
+      } else if (shiftData?.workHours != null && Number(shiftData.workHours) > 0) {
+        const totalMinutes = Math.round(Number(shiftData.workHours) * 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        totalTimeStr = `${hours}h ${mins}m`;
+        decimalHours = Number(shiftData.workHours).toFixed(2);
+      } else if (effectivePunchIn && !effectivePunchOut) {
+        totalTimeStr = "In Progress (On Duty)";
+        decimalHours = "0.00";
+      }
 
       return [
         `"${log.id}"`,
@@ -379,7 +442,8 @@ router.get("/export", async (req, res, next) => {
         `"${log.status}"`,
         `"${punchInStr}"`,
         `"${punchOutStr}"`,
-        `"${hoursStr}"`,
+        `"${totalTimeStr}"`,
+        `${decimalHours}`,
         `"${(log.remarks || "").replace(/"/g, '""')}"`,
         `"${log.clientType}"`,
         `"${new Date(log.timestamp).toLocaleString()}"`,

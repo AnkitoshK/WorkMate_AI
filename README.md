@@ -34,6 +34,127 @@
 
 ---
 
+## 🔄 Complete System Feature Flows & Operational Lifecycle
+
+### 1. Shift Attendance Lifecycle & Same-Day Re-Login Lock
+WorkMate AI enforces a strict, enterprise-compliant shift and attendance schedule to ensure accurate work-hour reporting, employee wellness, and shift handover integrity:
+
+```text
+[Employee Login]
+       │
+       ▼
+[9:00 AM Shift Punch In] ──► (Arrival ≤ 9:30 AM: ON_TIME | Arrival > 9:30 AM: LATE)
+       │
+       ▼ (Duty Status: ON_DUTY)
+[Active Shift Duration: 8h 30m]
+       │
+       ▼
+[5:30 PM Shift Punch Out] ──► (Status: COMPLETED / HALF_DAY / EARLY_LOGOUT)
+       │                      (Duty Status: OFF_DUTY | Total Hours Logged)
+       ▼
+[Shift Logout]
+       │
+       ▼
+[Shift Cooldown Window: 8 Hours 30 Minutes]
+       │
+       ├──► ❌ Attempt Re-login on Same Day ──► BLOCKED (403 Forbidden with exact countdown)
+       │
+       ▼
+[Next Day Midnight / New Cycle] ──► ✅ Allowed to log in and start new daily shift
+```
+
+#### Detailed Step-by-Step Flow:
+1. **User Sign-In**:
+   - The employee enters their registered corporate email and account password.
+   - On successful authentication, their active session is initiated.
+2. **Shift Punch-In (9:00 AM Standard Shift)**:
+   - Attendance is **explicitly punched** via the Punch Terminal (web login alone does not mark attendance).
+   - **30-Minute Relaxation Buffer**:
+     - Arrival on or before 9:30 AM is designated as `ON_TIME` with the grace buffer applied.
+     - Arrival after 9:30 AM is categorized as `LATE`, and late arrival duration is recorded down to the exact minute.
+   - Duty status transitions to `ON_DUTY` with the exact punch timestamp and IP address logged in Neon Serverless Postgres.
+   - **Single Punch Guard**: The employee cannot punch in multiple times for the same daily cycle (`existingTodayPunch` guard).
+3. **Shift Punch-Out (5:30 PM Standard Shift End)**:
+   - At the conclusion of the 8h 30m workday, the employee clicks **Punch Out**.
+   - The platform calculates the exact time elapsed between morning Punch In and evening Punch Out (e.g. `8h 30m`).
+   - Shift status is categorized:
+     - `COMPLETED`: Work duration ≥ 8 hours 30 minutes.
+     - `HALF_DAY`: Work duration ≥ 4 hours 15 minutes.
+     - `EARLY_LOGOUT`: Left prior to minimum shift threshold.
+   - Duty status transitions to `OFF_DUTY`.
+4. **Shift Logout & 8h 30m Cooldown (Same-Day Login Lock)**:
+   - When the user logs out after punching out, the **Shift Cooldown period of 8 hours and 30 minutes** is initialized.
+   - **Same-Day Re-Login Prevention**: To prevent irregular double-punching and ensure employee rest cycles, the employee is **strictly blocked from logging in or punching in again on the same day**.
+   - Attempting to log in during this period triggers an HTTP `403 Forbidden` response displaying the exact time when next login is authorized:
+     > *"Shift cooldown active: You have already completed your shift (punched out) and logged out for today. Per shift cycle rules, you can log in again at [Time Tomorrow] (remaining: Xh Ym)."*
+   - **Daily Cycle Operation**: Every calendar day at midnight, the daily shift cycle rolls over, allowing employees to start their new day cleanly.
+   - **SuperAdmin Override**: `SUPER_ADMIN` and `ADMIN` roles are exempt from cooldown locks for emergency platform management and can reset any user's cooldown via `POST /api/users/reset-cooldown`.
+5. **30-Day Rolling Data Retention**:
+   - Attendance records are preserved for a 30-day (1 month) audit window.
+   - Records older than 30 days are automatically pruned by background retention routines, keeping the database optimized.
+
+---
+
+### 2. Attendance Excel & CSV Calculation Report Flow
+The attendance module provides comprehensive operational reporting with automated calculation columns:
+- **Date-Wise Filter**: Inspect records by specific calendar date with **Today**, **Yesterday**, and **All Dates** quick filters.
+- **Role-Based Visibility**:
+  - `SUPER_ADMIN`: Views and exports attendance records for all employees across all engineering squads.
+  - Normal Employees (`ENGINEER`, `USER`, `MANAGER`): Can only view and export their own personal attendance audit trail.
+- **Excel Calculation-Ready CSV**:
+  - Both client-side blob export and direct server-side export (`GET /api/attendance/export`) include:
+    - **Punch In Time**: Exact morning punch time (e.g. `09:00:15 AM`).
+    - **Punch Out Time**: Exact evening punch time (e.g. `05:30:22 PM`).
+    - **Total Time (Punch In - Punch Out)**: Formatted shift duration (e.g. `8h 30m`).
+    - **Total Hours (Decimal Calculation)**: Pure numeric decimal hours (e.g. `8.50`).
+  - The decimal hours column enables direct, effortless formulas in Microsoft Excel or Google Sheets (e.g. `=SUM(L2:L100)` or `=AVERAGE(L2:L100)`) for payroll and attendance auditing without manual conversions.
+
+---
+
+### 3. Role-Based Access Control (RBAC) & Authority Hierarchy
+WorkMate AI enforces granular, zero-leakage role governance across 5 enterprise tiers:
+
+| Role | Badge | Permissions & Operational Scope |
+|---|---|---|
+| **SuperAdmin** | 👑 `SUPER_ADMIN` | Full platform supremacy: create/delete users, provision services, switch accounts, view & export user passwords/credentials, company-wide attendance. |
+| **Engineering Manager** | 👔 `MANAGER` | Tech lead oversight, work order dispatching, triage approvals, ticket re-assignment, squad workload rebalancing. |
+| **Software Engineer** | 🛠️ `ENGINEER` | Claim on-call incidents, run AI triage diagnostics, attach PR links, resolve tickets, submit personal shift attendance. |
+| **Platform Admin** | 🛡️ `ADMIN` | Configure SLA thresholds, monitor service health, manage routing queues, bypass shift cooldowns. |
+| **Developer / Reporter** | 👤 `USER` | Submit incident bug reports, track resolution status, post comments, follow incident progress. |
+
+---
+
+### 4. Device-Scoped Account Suggestion & Zero-Leakage Privacy
+- **1st Login Remembered**: When any user logs into WorkMate AI on a browser for the first time, their account is securely stored in device `localStorage`.
+- **Employee Devices**: On a normal employee's device, **only their own single ID** is suggested below the login button (`👤 Suggested Login ID (Saved on Device)`). They can never see any other employee's ID.
+- **SuperAdmin Devices**: Devices where a SuperAdmin has authenticated offer quick administrative selection across authorized accounts (`👑 SuperAdmin Quick Login Suggestions`).
+- **Public / Unauthenticated Devices**: Fresh visitors or incognito windows display **zero account suggestions**, protecting corporate user directories from unauthorized discovery.
+- **Device Forget Option**: Users can click `✕` on any suggested account card to clear cached credentials from that machine.
+
+---
+
+### 5. SuperAdmin User Credential & Password Audit Export
+- **Security Compliance**: SuperAdmins can download the complete user credential directory via `GET /api/users/export`.
+- **Report Contents**: Exported CSV contains User ID, Full Name, Email Address, Role, Department, **Password (Hash / Security Code)**, Duty Status, Created At, Last Login At, and Last Logout At.
+- **Non-Admin Protection**: Non-superadmin access attempts receive a strict `403 Forbidden` response.
+
+---
+
+### 6. SuperAdmin-Only Account Switcher
+- Account switching is **strictly restricted to SuperAdmins**. Normal employees cannot switch accounts under any circumstances.
+- Available exclusively to SuperAdmins across three convenient locations:
+  1. **Header Bar**: Quick `🔁 Switch` button.
+  2. **Auth Modal**: `🔁 Switch Account` tab.
+  3. **Team Management (Tab 4)**: `Switch to User →` button on each team member card.
+
+---
+
+### 7. Closed Incident Audit Archive & AI Copilot Workflow
+- **Closed Ticket Archive**: Completed incidents are archived in a dedicated database table with turnaround time, resolution notes, and root-cause records, exportable via CSV.
+- **WorkMate AI Incident Copilot**: Autonomous triage extracts failure patterns, determines root causes, and recommends step-by-step SOP remediation plans.
+
+---
+
 ## 🏗️ Architecture
 
 ```text
