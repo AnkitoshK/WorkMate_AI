@@ -100,10 +100,10 @@ router.post("/login", async (req, res, next) => {
     }
 
     // Shift Cooldown Check:
-    // If user logged out recently, enforce 8 hours and 30 minutes shift cycle cooldown
+    // If user logged out recently, enforce 1 hour shift cycle cooldown
     // (Exempt SUPER_ADMIN and ADMIN so operations and administrative overrides are unrestricted)
     if (user.lastLogoutAt && user.role !== "SUPER_ADMIN" && user.role !== "ADMIN") {
-      const cooldownMs = 8.5 * 60 * 60 * 1000; // 8 hours 30 minutes
+      const cooldownMs = 1 * 60 * 60 * 1000; // 1 hour cooling period
       const elapsedMs = Date.now() - new Date(user.lastLogoutAt).getTime();
       if (elapsedMs < cooldownMs) {
         const remainingMs = cooldownMs - elapsedMs;
@@ -111,7 +111,7 @@ router.post("/login", async (req, res, next) => {
         const remainingMinutes = Math.ceil((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
         const allowAt = new Date(Date.now() + remainingMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
         return res.status(403).json({
-          error: `Shift cooldown active: You logged out of your shift. Per 8h 30m shift cycle rules, you can log in again at ${allowAt} (remaining: ${remainingHours}h ${remainingMinutes}m).`,
+          error: `Shift cooldown active: You logged out of your shift. Per 1-hour cooling period rules, you can log in again at ${allowAt} (remaining: ${remainingHours > 0 ? `${remainingHours}h ` : ""}${remainingMinutes}m).`,
           cooldownRemainingMs: remainingMs,
           canLoginAt: allowAt,
         });
@@ -136,7 +136,7 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
-// POST /api/users/logout - Record logout timestamp for 8h 30m cooldown tracking
+// POST /api/users/logout - Record logout timestamp for 1-hour cooldown tracking
 router.post("/logout", async (req, res, next) => {
   try {
     const { userId } = req.body;

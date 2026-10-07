@@ -896,7 +896,7 @@ export default function WorkMateEnterpriseApp() {
     }
   };
 
-  // Session: Logout (Tracks shift cooldown: 8h 30m cycle)
+  // Session: Logout (Tracks shift cooldown: 1-hour cooling period)
   const handleLogout = useCallback(() => {
     if (activeUser) {
       fetch(`${API_BASE}/api/users/logout`, {
@@ -908,7 +908,7 @@ export default function WorkMateEnterpriseApp() {
       triggerToast(
         "info",
         "Session Concluded",
-        `Logged out ${activeUser.name}. Shift cooldown period initialized (8h 30m cycle).`,
+        `Logged out ${activeUser.name}. Shift cooldown period initialized (1-hour cooling period).`,
         "ATTENDANCE"
       );
     }
@@ -3497,7 +3497,7 @@ export default function WorkMateEnterpriseApp() {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                     <span style={{ color: "#f59e0b" }}>•</span>
-                    <span><strong>Shift Rest Cooldown:</strong> 8h 30m cooldown is enforced upon logout before next session</span>
+                    <span><strong>Shift Rest Cooldown:</strong> 1-hour cooling period is enforced upon logout before next session</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                     <span style={{ color: "#a78bfa" }}>•</span>

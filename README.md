@@ -55,12 +55,12 @@ WorkMate AI enforces a strict, enterprise-compliant shift and attendance schedul
 [Shift Logout]
        │
        ▼
-[Shift Cooldown Window: 8 Hours 30 Minutes]
+[Shift Cooldown Window: 1 Hour Cooling Period]
        │
-       ├──► ❌ Attempt Re-login on Same Day ──► BLOCKED (403 Forbidden with exact countdown)
+       ├──► ❌ Attempt Re-login during Cooldown ──► BLOCKED (403 Forbidden with exact countdown)
        │
        ▼
-[Next Day Midnight / New Cycle] ──► ✅ Allowed to log in and start new daily shift
+[Cooldown Expires / New Cycle] ──► ✅ Allowed to log in and start new shift session
 ```
 
 #### Detailed Step-by-Step Flow:
@@ -82,12 +82,11 @@ WorkMate AI enforces a strict, enterprise-compliant shift and attendance schedul
      - `HALF_DAY`: Work duration ≥ 4 hours 15 minutes.
      - `EARLY_LOGOUT`: Left prior to minimum shift threshold.
    - Duty status transitions to `OFF_DUTY`.
-4. **Shift Logout & 8h 30m Cooldown (Same-Day Login Lock)**:
-   - When the user logs out after punching out, the **Shift Cooldown period of 8 hours and 30 minutes** is initialized.
-   - **Same-Day Re-Login Prevention**: To prevent irregular double-punching and ensure employee rest cycles, the employee is **strictly blocked from logging in or punching in again on the same day**.
+4. **Shift Logout & 1-Hour Cooling Period**:
+   - When the user logs out after punching out, the **Shift Cooldown period of 1 hour** is initialized.
+   - **Cooldown Protection**: To protect against accidental double punches or session collisions immediately after shift exit, the employee is protected by a 1-hour cooling period.
    - Attempting to log in during this period triggers an HTTP `403 Forbidden` response displaying the exact time when next login is authorized:
-     > *"Shift cooldown active: You have already completed your shift (punched out) and logged out for today. Per shift cycle rules, you can log in again at [Time Tomorrow] (remaining: Xh Ym)."*
-   - **Daily Cycle Operation**: Every calendar day at midnight, the daily shift cycle rolls over, allowing employees to start their new day cleanly.
+     > *"Shift cooldown active: You logged out of your shift. Per 1-hour cooling period rules, you can log in again at [Time] (remaining: Xm)."*
    - **SuperAdmin Override**: `SUPER_ADMIN` and `ADMIN` roles are exempt from cooldown locks for emergency platform management and can reset any user's cooldown via `POST /api/users/reset-cooldown`.
 5. **30-Day Rolling Data Retention**:
    - Attendance records are preserved for a 30-day (1 month) audit window.

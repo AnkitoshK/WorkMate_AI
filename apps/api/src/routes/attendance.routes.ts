@@ -166,10 +166,10 @@ router.post("/punch", async (req, res, next) => {
     const userAgent = (req.headers["user-agent"] as string) || "Web Browser";
 
     if (action === "PUNCH_IN") {
-      // Cooldown check: If employee logged out recently, enforce 8h 30m cooldown
+      // Cooldown check: If employee logged out recently, enforce 1-hour cooldown
       // (Exempt SUPER_ADMIN and ADMIN for administrative flexibility)
       if (user.lastLogoutAt && user.role !== "SUPER_ADMIN" && user.role !== "ADMIN") {
-        const cooldownMs = 8.5 * 60 * 60 * 1000; // 8 hours 30 mins
+        const cooldownMs = 1 * 60 * 60 * 1000; // 1 hour cooling period
         const elapsedMs = now.getTime() - new Date(user.lastLogoutAt).getTime();
         if (elapsedMs < cooldownMs) {
           const remainingMs = cooldownMs - elapsedMs;
@@ -177,7 +177,7 @@ router.post("/punch", async (req, res, next) => {
           const remainingMins = Math.ceil((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
           const allowAt = new Date(now.getTime() + remainingMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
           return res.status(403).json({
-            error: `Shift cooldown active: You logged out earlier. In accordance with the 8h 30m shift cycle, next punch-in is allowed at ${allowAt} (remaining: ${remainingHours}h ${remainingMins}m).`,
+            error: `Shift cooldown active: You logged out earlier. In accordance with the 1-hour cooling period, next punch-in is allowed at ${allowAt} (remaining: ${remainingHours > 0 ? `${remainingHours}h ` : ""}${remainingMins}m).`,
             cooldownRemainingMs: remainingMs,
             canPunchAt: allowAt,
           });
