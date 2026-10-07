@@ -186,6 +186,105 @@ router.post("/reset-cooldown", async (req, res, next) => {
   }
 });
 
+// GET /api/users/export - Export all users with credentials as CSV (SuperAdmin authority only)
+router.get("/export", async (req, res, next) => {
+  try {
+    const requesterRole = (req.query.requesterRole || req.headers["x-user-role"]) as string;
+    if (requesterRole !== "SUPER_ADMIN") {
+      return res.status(403).json({
+        error: "Forbidden: SuperAdmin authority is strictly required to download user credentials.",
+      });
+    }
+
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        password: true,
+        role: true,
+        department: true,
+        shiftStatus: true,
+        createdAt: true,
+        lastLoginAt: true,
+        lastLogoutAt: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const headers = [
+      "User ID",
+      "Full Name",
+      "Email Address",
+      "Role",
+      "Department",
+      "Password (Hash / Security Code)",
+      "Duty Status",
+      "Created At",
+      "Last Login At",
+      "Last Logout At",
+    ];
+
+    const escapeCsv = (str: any) => `"${String(str ?? "").replace(/"/g, '""')}"`;
+
+    const rows = users.map((u) => [
+      escapeCsv(u.id),
+      escapeCsv(u.name),
+      escapeCsv(u.email),
+      escapeCsv(u.role),
+      escapeCsv(u.department || "Operations"),
+      escapeCsv(u.password || "WorkMate@123"),
+      escapeCsv(u.shiftStatus || "OFF_DUTY"),
+      escapeCsv(u.createdAt ? new Date(u.createdAt).toISOString() : "N/A"),
+      escapeCsv(u.lastLoginAt ? new Date(u.lastLoginAt).toISOString() : "Never"),
+      escapeCsv(u.lastLogoutAt ? new Date(u.lastLogoutAt).toISOString() : "Never"),
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="WorkMate_Users_Credentials_${new Date().toISOString().slice(0, 10)}.csv"`
+    );
+    return res.status(200).send(csvContent);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/users/export-json - JSON export of users including passwords for SuperAdmin
+router.get("/export-json", async (req, res, next) => {
+  try {
+    const requesterRole = (req.query.requesterRole || req.headers["x-user-role"]) as string;
+    if (requesterRole !== "SUPER_ADMIN") {
+      return res.status(403).json({
+        error: "Forbidden: SuperAdmin authority is strictly required to download user credentials.",
+      });
+    }
+
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        password: true,
+        role: true,
+        department: true,
+        shiftStatus: true,
+        createdAt: true,
+        lastLoginAt: true,
+        lastLogoutAt: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    res.json(users);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/users
 router.get("/", async (_req, res, next) => {
   try {

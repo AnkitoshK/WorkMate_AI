@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, FormEvent } from "react";
+import React, { useState, useEffect, useCallback, useRef, FormEvent } from "react";
 
 // --- Types ---
 export type Role = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "ENGINEER" | "USER";
@@ -8,6 +8,16 @@ export type IssueStatus = "OPEN" | "ASSIGNED" | "IN_PROGRESS" | "RESOLVED" | "CL
 export type IssuePriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type IssueCategory = "HARDWARE" | "SOFTWARE" | "NETWORK" | "FACILITY" | "SAFETY" | "OTHER";
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
+
+export interface SavedAccount {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  avatar?: string | null;
+  department?: string | null;
+  lastUsedAt: number;
+}
 
 export interface User {
   id: string;
@@ -275,7 +285,9 @@ export default function WorkMateEnterpriseApp() {
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [isNewUserOpen, setIsNewUserOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authTab, setAuthTab] = useState<"login" | "register" | "profile">("login");
+  const [authTab, setAuthTab] = useState<"login" | "switch" | "register" | "profile">("login");
+  const initialAuthChecked = useRef(false);
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -703,14 +715,50 @@ export default function WorkMateEnterpriseApp() {
     return () => clearInterval(timer);
   }, []);
 
+  // Load Saved Accounts from localStorage on device
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const raw = localStorage.getItem("workmate_saved_accounts");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) setSavedAccounts(parsed);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   // Session: Login as user (Attendance is explicitly punched, NOT marked on web login)
   const handleLoginAs = useCallback((user: User) => {
     setActiveUser(user);
     if (typeof window !== "undefined") {
       localStorage.setItem("workmate_active_user_id", user.id);
       localStorage.setItem("workmate_active_user_email", user.email);
+
+      // Save to device remembered accounts
+      try {
+        const raw = localStorage.getItem("workmate_saved_accounts");
+        const list: SavedAccount[] = raw ? JSON.parse(raw) : [];
+        const filtered = list.filter((a) => a.id !== user.id);
+        filtered.unshift({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          avatar: user.avatar,
+          department: user.department,
+          lastUsedAt: Date.now(),
+        });
+        localStorage.setItem("workmate_saved_accounts", JSON.stringify(filtered));
+        setSavedAccounts(filtered);
+      } catch (e) {
+        console.error(e);
+      }
     }
     setIsAuthModalOpen(false);
+    setIsNewUserOpen(false);
     setLoginError("");
     setLoginEmail("");
     setLoginPassword("");
@@ -727,6 +775,22 @@ export default function WorkMateEnterpriseApp() {
     );
     void fetchAttendanceLogs("", user);
   }, [triggerToast, fetchAttendanceLogs]);
+
+  // Forget / Remove a saved account from this device
+  const handleRemoveSavedAccount = useCallback((id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const raw = typeof window !== "undefined" ? localStorage.getItem("workmate_saved_accounts") : null;
+      const list: SavedAccount[] = raw ? JSON.parse(raw) : [];
+      const filtered = list.filter((a) => a.id !== id);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("workmate_saved_accounts", JSON.stringify(filtered));
+      }
+      setSavedAccounts(filtered);
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
 
   // Session: Email + Password Login (Production Real-Time Authentication)
   const handleEmailLogin = async (e: FormEvent) => {
@@ -815,28 +879,35 @@ export default function WorkMateEnterpriseApp() {
       const fetchedUsers: User[] = Array.isArray(uRes) ? uRes : [];
       setUsers(fetchedUsers);
 
-      // Session Restoration from localStorage
+      // Session Restoration from localStorage (Only perform modal changes on FIRST initial mount check)
       const savedUserId = typeof window !== "undefined" ? localStorage.getItem("workmate_active_user_id") : null;
-      if (savedUserId) {
-        const found = fetchedUsers.find((u) => u.id === savedUserId);
-        if (found) {
-          setActiveUser(found);
-          setIsAuthModalOpen(false);
-        } else {
-          // Saved user no longer exists in database
-          setActiveUser(null);
-          if (typeof window !== "undefined") {
-            localStorage.removeItem("workmate_active_user_id");
-            localStorage.removeItem("workmate_active_user_email");
+      if (!initialAuthChecked.current) {
+        initialAuthChecked.current = true;
+        if (savedUserId) {
+          const found = fetchedUsers.find((u) => u.id === savedUserId);
+          if (found) {
+            setActiveUser(found);
+            setIsAuthModalOpen(false);
+          } else {
+            setActiveUser(null);
+            if (typeof window !== "undefined") {
+              localStorage.removeItem("workmate_active_user_id");
+              localStorage.removeItem("workmate_active_user_email");
+            }
+            setAuthTab("login");
+            setIsAuthModalOpen(true);
           }
+        } else {
+          setActiveUser(null);
           setAuthTab("login");
           setIsAuthModalOpen(true);
         }
-      } else {
-        // First-time visitor or logged out: prompt for login
-        setActiveUser(null);
-        setAuthTab("login");
-        setIsAuthModalOpen(true);
+      } else if (savedUserId) {
+        // Subsequent background data refreshes: never force-close open modals!
+        const found = fetchedUsers.find((u) => u.id === savedUserId);
+        if (found) {
+          setActiveUser((prev) => (prev?.id === found.id ? found : prev));
+        }
       }
 
       setIssues(Array.isArray(iRes) ? iRes : []);
@@ -850,11 +921,11 @@ export default function WorkMateEnterpriseApp() {
     } finally {
       setLoading(false);
     }
-  }, [fetchAttendanceLogs]);
+  }, []);
 
   useEffect(() => {
     void refreshAllData();
-  }, [refreshAllData]);
+  }, []);
 
   // Dynamic Role Update from UI
   const handleUpdateUserRole = async (userId: string, newRole: Role) => {
@@ -923,6 +994,74 @@ export default function WorkMateEnterpriseApp() {
       alert(`✓ Team member "${userName}" deleted.`);
     } catch (err: any) {
       alert("❌ " + err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Export Users & Passwords (SuperAdmin Authority Only)
+  const handleExportUsersWithPasswords = async () => {
+    if (activeUser?.role !== "SUPER_ADMIN") {
+      alert("🔒 SuperAdmin Authority Required: Only SuperAdmins can download the user credential audit report.");
+      return;
+    }
+    try {
+      setActionLoading(true);
+      const res = await fetch(`${API_BASE}/api/users/export-json?requesterRole=SUPER_ADMIN`);
+      if (!res.ok) {
+        throw new Error("Failed to fetch user credentials from server");
+      }
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        alert("No user records found to export.");
+        return;
+      }
+
+      const headers = [
+        "User ID",
+        "Full Name",
+        "Email Address",
+        "Role",
+        "Department",
+        "Password (Hash / Security Code)",
+        "Duty Status",
+        "Created At",
+        "Last Login At",
+      ];
+
+      const escapeCsv = (str: any) => `"${String(str ?? "").replace(/"/g, '""')}"`;
+
+      const rows = data.map((u: any) => [
+        escapeCsv(u.id),
+        escapeCsv(u.name),
+        escapeCsv(u.email),
+        escapeCsv(u.role),
+        escapeCsv(u.department || "Operations"),
+        escapeCsv(u.password || "WorkMate@123"),
+        escapeCsv(u.shiftStatus || "OFF_DUTY"),
+        escapeCsv(u.createdAt ? new Date(u.createdAt).toISOString() : "N/A"),
+        escapeCsv(u.lastLoginAt ? new Date(u.lastLoginAt).toISOString() : "Never"),
+      ]);
+
+      const csvContent = [headers.join(","), ...rows.map((r: any) => r.join(","))].join("\r\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `WorkMate_Users_Credentials_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      triggerToast(
+        "success",
+        "Credentials Exported",
+        `Exported ${data.length} user accounts with password hashes into CSV for SuperAdmin audit.`,
+        "GENERAL"
+      );
+    } catch (err: any) {
+      alert("Export failed: " + err.message);
     } finally {
       setActionLoading(false);
     }
@@ -1876,10 +2015,7 @@ export default function WorkMateEnterpriseApp() {
             {activeUser?.role === "SUPER_ADMIN" && (
               <button
                 className="btn btn-secondary"
-                onClick={() => {
-                  setAuthTab("register");
-                  setIsAuthModalOpen(true);
-                }}
+                onClick={() => setIsNewUserOpen(true)}
                 title="Add a new team member"
                 style={{
                   height: "32px",
@@ -1934,6 +2070,21 @@ export default function WorkMateEnterpriseApp() {
                   </span>
                 </div>
               </div>
+
+              {/* Switch Account Button (SuperAdmin Only) */}
+              {activeUser.role === "SUPER_ADMIN" && (
+                <button
+                  className="btn btn-secondary"
+                  style={{ height: "32px", padding: "0 10px", fontSize: "11.5px", display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}
+                  onClick={() => {
+                    setAuthTab("switch");
+                    setIsAuthModalOpen(true);
+                  }}
+                  title="Switch to another user account (SuperAdmin privilege)"
+                >
+                  🔁 Switch
+                </button>
+              )}
 
               {/* Edit Profile Button */}
               <button
@@ -3923,9 +4074,27 @@ export default function WorkMateEnterpriseApp() {
                     View team members, assign department roles, or switch accounts.
                   </p>
                 </div>
-                <button className="btn btn-primary" onClick={() => { setAuthTab("register"); setIsAuthModalOpen(true); }}>
-                  + Add Team Member
-                </button>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                  <button
+                    className="export-btn"
+                    onClick={handleExportUsersWithPasswords}
+                    title="Export all user credentials including password hashes (SuperAdmin only)"
+                  >
+                    <span>📥</span> Export Users & Passwords (CSV)
+                  </button>
+                  <a
+                    href={`${API_BASE}/api/users/export?requesterRole=SUPER_ADMIN`}
+                    download={`WorkMate_Users_Credentials_${new Date().toISOString().slice(0, 10)}.csv`}
+                    className="btn btn-secondary"
+                    style={{ height: "34px", padding: "0 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none" }}
+                    title="Direct server CSV download of all user accounts and passwords"
+                  >
+                    <span>🌐</span> Server CSV (Passwords)
+                  </a>
+                  <button className="btn btn-primary" onClick={() => setIsNewUserOpen(true)}>
+                    + Add Team Member
+                  </button>
+                </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "18px" }}>
@@ -3936,7 +4105,7 @@ export default function WorkMateEnterpriseApp() {
                     <p style={{ color: "var(--text-dim)", maxWidth: "450px", margin: "0 auto 20px", fontSize: "13px" }}>
                       All users have been cleared. Click below to create your team members with custom roles and engineering squads!
                     </p>
-                    <button className="btn btn-primary" onClick={() => { setAuthTab("register"); setIsAuthModalOpen(true); }}>
+                    <button className="btn btn-primary" onClick={() => setIsNewUserOpen(true)}>
                       + Create First Team Member & Role
                     </button>
                   </div>
@@ -3994,6 +4163,16 @@ export default function WorkMateEnterpriseApp() {
                         </div>
 
                         <div style={{ display: "flex", gap: "6px" }}>
+                          {activeUser?.role === "SUPER_ADMIN" && (
+                            <button
+                              className="btn btn-secondary"
+                              style={{ padding: "4px 8px", fontSize: "11px" }}
+                              onClick={() => handleLoginAs(u)}
+                              title="Switch active session to this user (SuperAdmin privilege)"
+                            >
+                              {activeUser?.id === u.id ? "✓ Active" : "Switch to User →"}
+                            </button>
+                          )}
                           <button
                             className="btn btn-danger"
                             style={{ padding: "4px 8px", fontSize: "11px", color: "#fb7185", background: "rgba(244, 63, 94, 0.15)" }}
@@ -5012,6 +5191,210 @@ export default function WorkMateEnterpriseApp() {
         </div>
       )}
 
+      {/* MODAL 2.5: DEDICATED NEW USER CREATION (SUPERADMIN ONLY) */}
+      {isNewUserOpen && (
+        <div className="modal-overlay" onClick={() => setIsNewUserOpen(false)}>
+          <div className="modal-content" style={{ maxWidth: "680px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2 className="modal-title">👑 Provision New Team Member</h2>
+                <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
+                  Create and assign system credentials, engineering squad, and authority role.
+                </p>
+              </div>
+              <button
+                className="close-btn"
+                onClick={() => setIsNewUserOpen(false)}
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateUser}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                <div className="form-group">
+                  <label className="form-label">Full Name *</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Ankit Sharma"
+                    value={userForm.name}
+                    onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Work Email *</label>
+                  <input
+                    type="email"
+                    className="form-input"
+                    placeholder="e.g. ankit@company.com"
+                    value={userForm.email}
+                    onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Initial Account Password</span>
+                  <span style={{ color: "var(--accent-cyan)", fontSize: "11px" }}>Default: WorkMate@123</span>
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Leave blank to use default (WorkMate@123) or enter min 6 characters"
+                  value={userForm.password}
+                  onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                />
+                <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                  The user will use this password to sign into the Web Portal.
+                </div>
+              </div>
+
+              {/* Role Definition Cards */}
+              <div className="form-group">
+                <label className="form-label" style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Permission Role & Capabilities *</span>
+                  <span style={{ color: "var(--accent-cyan)", fontSize: "11px" }}>Selected: {userForm.role}</span>
+                </label>
+
+                <div className="role-card-grid">
+                  {[
+                    {
+                      role: "SUPER_ADMIN",
+                      icon: "👑",
+                      title: "SuperAdmin / VP",
+                      desc: "Full unrestricted platform control, microservice catalog, delete & manage users.",
+                    },
+                    {
+                      role: "MANAGER",
+                      icon: "👔",
+                      title: "Engineering Manager",
+                      desc: "Tech Lead oversight, dispatch work orders, triage approvals, workload rebalancing.",
+                    },
+                    {
+                      role: "ENGINEER",
+                      icon: "🛠️",
+                      title: "Software Engineer",
+                      desc: "Claim on-call incidents, run AI diagnostics, submit PRs, resolve error tickets.",
+                    },
+                    {
+                      role: "ADMIN",
+                      icon: "🛡️",
+                      title: "Platform Admin",
+                      desc: "Manage SLA thresholds, service health statuses, queue routing configurations.",
+                    },
+                    {
+                      role: "USER",
+                      icon: "👤",
+                      title: "Reporter / Developer",
+                      desc: "Submit bug tickets, track status, post comments, follow incident progress.",
+                    },
+                  ].map((r) => (
+                    <div
+                      key={r.role}
+                      className={`role-card ${userForm.role === r.role ? "selected" : ""}`}
+                      onClick={() => {
+                        const isSuperAdmin = r.role === "SUPER_ADMIN";
+                        setUserForm({
+                          ...userForm,
+                          role: r.role as Role,
+                          department: isSuperAdmin
+                            ? "All Engineering Squads (Global)"
+                            : userForm.department === "All Engineering Squads (Global)"
+                              ? "Backend & Core APIs"
+                              : userForm.department,
+                        });
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                        <span style={{ fontSize: "16px" }}>{r.icon}</span>
+                        <span style={{ fontSize: "13px", fontWeight: "800" }}>{r.title}</span>
+                      </div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: "1.4" }}>
+                        {r.desc}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                <div className="form-group">
+                  <label className="form-label" style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Engineering Squad / Department</span>
+                    {userForm.role === "SUPER_ADMIN" && (
+                      <span style={{ color: "var(--accent-cyan)", fontSize: "11px", fontWeight: "700" }}>
+                        👑 Locked: All Squads (SuperAdmin)
+                      </span>
+                    )}
+                  </label>
+                  <select
+                    className="form-select"
+                    value={userForm.role === "SUPER_ADMIN" ? "All Engineering Squads (Global)" : userForm.department}
+                    onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
+                    disabled={userForm.role === "SUPER_ADMIN"}
+                    style={{
+                      opacity: userForm.role === "SUPER_ADMIN" ? 0.6 : 1,
+                      cursor: userForm.role === "SUPER_ADMIN" ? "not-allowed" : "pointer",
+                      background: userForm.role === "SUPER_ADMIN" ? "rgba(255,255,255,0.04)" : undefined,
+                    }}
+                  >
+                    {userForm.role === "SUPER_ADMIN" && (
+                      <option value="All Engineering Squads (Global)">
+                        🌐 All Engineering Squads (Global / Cross-Functional)
+                      </option>
+                    )}
+                    <option value="Backend & Core APIs">Backend & Core APIs</option>
+                    <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
+                    <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
+                    <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
+                    <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
+                    <option value="Information Security & SecOps">Information Security & SecOps</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Profile Avatar</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Optional custom image URL"
+                    value={userForm.avatar}
+                    onChange={(e) => setUserForm({ ...userForm, avatar: e.target.value })}
+                  />
+                  <div className="avatar-preset-picker">
+                    <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Presets:</span>
+                    {AVATAR_PRESETS.map((url, idx) => (
+                      <img
+                        key={idx}
+                        src={url}
+                        alt="avatar preset"
+                        className={`avatar-preset-img ${userForm.avatar === url ? "selected" : ""}`}
+                        onClick={() => setUserForm({ ...userForm, avatar: url })}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
+                <button className="btn btn-secondary" type="button" onClick={() => setIsNewUserOpen(false)}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" type="submit" disabled={actionLoading}>
+                  {actionLoading ? "Provisioning..." : "✨ Provision Team Member"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* MODAL 3: AUTHENTICATION & LOGIN */}
       {isAuthModalOpen && (
         <div className="modal-overlay" onClick={() => activeUser && setIsAuthModalOpen(false)}>
@@ -5046,6 +5429,14 @@ export default function WorkMateEnterpriseApp() {
               >
                 Sign In
               </button>
+              {activeUser?.role === "SUPER_ADMIN" && (
+                <button
+                  className={`auth-tab ${authTab === "switch" ? "active" : ""}`}
+                  onClick={() => setAuthTab("switch")}
+                >
+                  🔁 Switch Account
+                </button>
+              )}
               {(activeUser?.role === "SUPER_ADMIN" || users.length === 0) && (
                 <button
                   className={`auth-tab ${authTab === "register" ? "active" : ""}`}
@@ -5180,6 +5571,117 @@ export default function WorkMateEnterpriseApp() {
                   </button>
                 </form>
 
+                {/* Point 1: Suggested Accounts below the login button */}
+                {savedAccounts.length > 0 && (() => {
+                  const isSuperAdminDevice = activeUser?.role === "SUPER_ADMIN" || savedAccounts.some((a) => a.role === "SUPER_ADMIN");
+                  // For SuperAdmin device: suggest SuperAdmin / saved accounts
+                  // For normal employee device: ONLY suggest his/her own single ID after 1st login
+                  const accountsToSuggest = isSuperAdminDevice
+                    ? savedAccounts
+                    : savedAccounts.slice(0, 1);
+
+                  return (
+                    <div style={{ marginTop: "16px", padding: "12px 14px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "10px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                        <span style={{ fontSize: "11.5px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span>{isSuperAdminDevice ? "👑" : "👤"}</span>
+                          {isSuperAdminDevice ? "SuperAdmin Quick Login Suggestions" : "Suggested Login ID (Saved on Device)"}
+                        </span>
+                        <span style={{ fontSize: "10.5px", color: isSuperAdminDevice ? "#fbbf24" : "var(--accent-cyan)", fontWeight: "600" }}>
+                          {isSuperAdminDevice ? "SuperAdmin Authority" : "1st Login Remembered"}
+                        </span>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {accountsToSuggest.map((acc) => {
+                          const isSelected = loginEmail === acc.email;
+                          return (
+                            <div
+                              key={acc.id}
+                              onClick={() => {
+                                setLoginEmail(acc.email);
+                                setLoginPassword("WorkMate@123");
+                              }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                padding: "8px 12px",
+                                background: isSelected ? "rgba(56, 189, 248, 0.12)" : "rgba(255, 255, 255, 0.03)",
+                                border: isSelected ? "1px solid var(--accent-cyan)" : "1px solid rgba(255, 255, 255, 0.08)",
+                                borderRadius: "8px",
+                                cursor: "pointer",
+                                transition: "all 0.15s ease",
+                              }}
+                              title="Click to auto-fill this account ID"
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                                {acc.avatar ? (
+                                  <img src={acc.avatar} alt={acc.name} style={{ width: "28px", height: "28px", borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                                ) : (
+                                  <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: "#4f46e5", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: "bold", flexShrink: 0 }}>
+                                    {acc.name.charAt(0)}
+                                  </div>
+                                )}
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: "12.5px", fontWeight: "600", color: "#fff", display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{acc.name}</span>
+                                    <span style={{
+                                      fontSize: "9px",
+                                      padding: "1px 5px",
+                                      borderRadius: "4px",
+                                      background: acc.role === "SUPER_ADMIN" ? "rgba(245, 158, 11, 0.2)" : "rgba(99, 102, 241, 0.2)",
+                                      color: acc.role === "SUPER_ADMIN" ? "#fbbf24" : "#818cf8",
+                                      fontWeight: "700",
+                                      flexShrink: 0,
+                                    }}>
+                                      {acc.role}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: "11px", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                    {acc.email} · {acc.department || "Operations"}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  style={{ height: "24px", padding: "0 8px", fontSize: "11px" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLoginEmail(acc.email);
+                                    setLoginPassword("WorkMate@123");
+                                  }}
+                                >
+                                  Use ID
+                                </button>
+                                <button
+                                  type="button"
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: "var(--text-muted)",
+                                    fontSize: "14px",
+                                    cursor: "pointer",
+                                    padding: "2px 4px",
+                                    lineHeight: 1,
+                                  }}
+                                  onClick={(e) => handleRemoveSavedAccount(acc.id, e)}
+                                  title="Forget this saved ID from this device"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Account Provisioning Notice for New Users */}
                 <div style={{
                   marginTop: "16px",
@@ -5199,6 +5701,96 @@ export default function WorkMateEnterpriseApp() {
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Point 3: Switch Account Tab - SuperAdmin Only */}
+            {authTab === "switch" && (
+              activeUser?.role === "SUPER_ADMIN" ? (
+                <div>
+                  <div style={{ marginBottom: "16px" }}>
+                    <h3 style={{ fontSize: "15px", fontWeight: "700", color: "#fff", margin: 0 }}>
+                      🔁 Switch Active Session (SuperAdmin Privilege)
+                    </h3>
+                    <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "3px" }}>
+                      As SuperAdmin, you can switch seamlessly to any staff or engineer account to inspect their portal and permissions.
+                    </p>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "10px", maxHeight: "360px", overflowY: "auto", paddingRight: "4px" }}>
+                    {users.map((u) => {
+                      const isCurrent = activeUser?.id === u.id;
+                      return (
+                        <div
+                          key={u.id}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: "10px",
+                            background: isCurrent ? "rgba(56, 189, 248, 0.12)" : "rgba(255, 255, 255, 0.03)",
+                            border: isCurrent ? "1px solid var(--accent-cyan)" : "1px solid rgba(255, 255, 255, 0.08)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "8px",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                            {u.avatar ? (
+                              <img src={u.avatar} alt={u.name} style={{ width: "30px", height: "30px", borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                            ) : (
+                              <div style={{ width: "30px", height: "30px", borderRadius: "50%", background: "#4f46e5", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: "bold", flexShrink: 0 }}>
+                                {u.name.charAt(0)}
+                              </div>
+                            )}
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: "12.5px", fontWeight: "700", color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {u.name}
+                              </div>
+                              <div style={{ fontSize: "11px", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {u.email}
+                              </div>
+                              <div style={{ display: "flex", gap: "4px", marginTop: "2px" }}>
+                                <span style={{
+                                  fontSize: "9px",
+                                  padding: "1px 5px",
+                                  borderRadius: "4px",
+                                  background: u.role === "SUPER_ADMIN" ? "rgba(245, 158, 11, 0.2)" : "rgba(99, 102, 241, 0.2)",
+                                  color: u.role === "SUPER_ADMIN" ? "#fbbf24" : "#818cf8",
+                                  fontWeight: "700"
+                                }}>
+                                  {u.role}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            className={isCurrent ? "btn btn-secondary" : "btn btn-primary"}
+                            style={{ height: "26px", padding: "0 8px", fontSize: "11px", flexShrink: 0 }}
+                            disabled={isCurrent}
+                            onClick={() => handleLoginAs(u)}
+                          >
+                            {isCurrent ? "Active" : "Switch →"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ textAlign: "center", padding: "40px 20px" }}>
+                  <div style={{ fontSize: "36px", marginBottom: "12px" }}>🔒</div>
+                  <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#fff", marginBottom: "8px" }}>
+                    SuperAdmin Authority Required
+                  </h3>
+                  <p style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "420px", margin: "0 auto 18px" }}>
+                    Switching accounts is restricted exclusively to SuperAdmins. Normal accounts cannot switch to other user profiles.
+                  </p>
+                  <button className="btn btn-secondary" onClick={() => setAuthTab("login")}>
+                    Return to Sign In
+                  </button>
+                </div>
+              )
             )}
 
             {/* TAB 1: REGISTER NEW MEMBER (SUPERADMIN ONLY) */}
