@@ -45,12 +45,15 @@ router.get("/", async (req, res, next) => {
     // Run 30-day retention auto-scrap
     await autoScrapRecordsOlderThanOneMonth();
 
-    const { search, limit = "200", role, department, date, startDate, endDate } = req.query;
+    const { search, limit = "200", role, department, date, startDate, endDate, userId } = req.query;
     const take = Math.min(Math.max(Number(limit) || 200, 1), 1000);
 
     const where: any = {};
     if (role && role !== "ALL") where.role = String(role);
     if (department && department !== "ALL") where.department = String(department);
+    if (userId && typeof userId === "string" && userId.trim()) {
+      where.userId = String(userId).trim();
+    }
 
     // Date-wise filtering: single specific date or range
     if (date && typeof date === "string" && date.trim()) {
@@ -99,13 +102,18 @@ router.get("/", async (req, res, next) => {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
+    const todayWhere: any = {
+      OR: [
+        { shiftDate: todayStr },
+        { timestamp: { gte: startOfToday } },
+      ],
+    };
+    if (where.userId) {
+      todayWhere.userId = where.userId;
+    }
+
     const todayCount = await prisma.attendanceLog.count({
-      where: {
-        OR: [
-          { shiftDate: todayStr },
-          { timestamp: { gte: startOfToday } },
-        ],
-      },
+      where: todayWhere,
     });
 
     // Unique staff active today
@@ -315,10 +323,13 @@ router.post("/punch", async (req, res, next) => {
 // GET /api/attendance/export - Export attendance logs to CSV (supports ?date=YYYY-MM-DD or date range)
 router.get("/export", async (req, res, next) => {
   try {
-    const { date, role, department } = req.query;
+    const { date, role, department, userId } = req.query;
     const where: any = {};
     if (role && role !== "ALL") where.role = String(role);
     if (department && department !== "ALL") where.department = String(department);
+    if (userId && typeof userId === "string" && userId.trim()) {
+      where.userId = String(userId).trim();
+    }
 
     if (date && typeof date === "string" && date.trim()) {
       const targetDate = date.trim();

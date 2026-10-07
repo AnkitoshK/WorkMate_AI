@@ -275,7 +275,7 @@ export default function WorkMateEnterpriseApp() {
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [isNewUserOpen, setIsNewUserOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authTab, setAuthTab] = useState<"login" | "switch" | "register" | "profile">("login");
+  const [authTab, setAuthTab] = useState<"login" | "register" | "profile">("login");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -404,11 +404,17 @@ export default function WorkMateEnterpriseApp() {
     []
   );
 
-  // Fetch Attendance Logs (Supports Date-wise filter)
-  const fetchAttendanceLogs = useCallback(async (dateFilter?: string) => {
+  // Fetch Attendance Logs (Supports Date-wise filter and user role scoping)
+  const fetchAttendanceLogs = useCallback(async (dateFilter?: string, userOverride?: User | null) => {
     try {
       setAttendanceLoading(true);
-      const queryParam = dateFilter ? `?date=${encodeURIComponent(dateFilter)}` : "";
+      const targetUser = userOverride !== undefined ? userOverride : activeUser;
+      const params = new URLSearchParams();
+      if (dateFilter) params.set("date", dateFilter);
+      if (targetUser && targetUser.role !== "SUPER_ADMIN") {
+        params.set("userId", targetUser.id);
+      }
+      const queryParam = params.toString() ? `?${params.toString()}` : "";
       const res = await fetch(`${API_BASE}/api/attendance${queryParam}`);
       if (res.ok) {
         const data = await res.json();
@@ -424,7 +430,7 @@ export default function WorkMateEnterpriseApp() {
     } finally {
       setAttendanceLoading(false);
     }
-  }, []);
+  }, [activeUser]);
 
   // Handle Explicit Shift Attendance Punch (PUNCH_IN / PUNCH_OUT)
   // Shift timing: 9:00 AM - 5:30 PM with 30-min relaxation buffer (up to 9:30 AM)
@@ -489,9 +495,18 @@ export default function WorkMateEnterpriseApp() {
     }
   };
 
-  // Export Attendance CSV Report (Respects date filter and UTF-8 BOM)
+  // Export Attendance CSV Report (Respects date filter, user role scoping and UTF-8 BOM)
   const handleExportAttendanceCsv = () => {
-    if (attendanceLogs.length === 0) {
+    // Normal users/engineers only export their own records
+    const recordsToExport = activeUser?.role === "SUPER_ADMIN"
+      ? attendanceLogs
+      : attendanceLogs.filter(
+        (l) =>
+          l.userId === activeUser?.id ||
+          l.userEmail.toLowerCase() === (activeUser?.email || "").toLowerCase()
+      );
+
+    if (recordsToExport.length === 0) {
       triggerToast("warning", "No Attendance Records", "There are no attendance records to export for the active view.", "ATTENDANCE");
       return;
     }
@@ -513,7 +528,7 @@ export default function WorkMateEnterpriseApp() {
       "Timestamp",
     ];
 
-    const rows = attendanceLogs.map((log) => {
+    const rows = recordsToExport.map((log) => {
       const punchInStr = log.punchIn ? new Date(log.punchIn).toLocaleTimeString() : "N/A";
       const punchOutStr = log.punchOut ? new Date(log.punchOut).toLocaleTimeString() : "N/A";
       const hoursStr = log.workHours ? `${log.workHours}h` : "N/A";
@@ -542,13 +557,14 @@ export default function WorkMateEnterpriseApp() {
     const link = document.createElement("a");
     link.setAttribute("href", url);
     const dateSuffix = attendanceDateFilter ? `_${attendanceDateFilter}` : `_${new Date().toISOString().slice(0, 10)}`;
-    link.setAttribute("download", `WorkMate_Attendance_Report${dateSuffix}.csv`);
+    const rolePrefix = activeUser?.role === "SUPER_ADMIN" ? "WorkMate_All_Attendance_Report" : `WorkMate_My_Attendance_Report_${activeUser?.name.replace(/\s+/g, "_")}`;
+    link.setAttribute("download", `${rolePrefix}${dateSuffix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    triggerToast("success", "Attendance Report Exported", `Downloaded attendance report containing ${attendanceLogs.length} entries.`, "ATTENDANCE");
+    triggerToast("success", "Attendance Report Exported", `Downloaded attendance report containing ${recordsToExport.length} entries.`, "ATTENDANCE");
   };
 
   // Export Closed Tickets CSV Report (Robust Blob + UTF-8 BOM, never truncated by #)
@@ -709,7 +725,8 @@ export default function WorkMateEnterpriseApp() {
       `Signed in as ${user.name} (${user.role} · ${user.department || "Operations"}). To mark shift attendance, use the Punch Terminal.`,
       "ATTENDANCE"
     );
-  }, [triggerToast]);
+    void fetchAttendanceLogs("", user);
+  }, [triggerToast, fetchAttendanceLogs]);
 
   // Session: Email + Password Login (Production Real-Time Authentication)
   const handleEmailLogin = async (e: FormEvent) => {
@@ -778,7 +795,8 @@ export default function WorkMateEnterpriseApp() {
     setLoginPassword("");
     setAuthTab("login");
     setIsAuthModalOpen(true);
-  }, [activeUser, triggerToast]);
+    void fetchAttendanceLogs("", null);
+  }, [activeUser, triggerToast, fetchAttendanceLogs]);
 
   // 1. Initial Data Fetch
   const refreshAllData = useCallback(async () => {
@@ -1026,8 +1044,8 @@ export default function WorkMateEnterpriseApp() {
     if (!ticketForm.title.trim() || !ticketForm.description.trim()) return;
 
     if (!activeUser || !users.some((u) => u.id === activeUser.id)) {
-      alert("⚠️ No active team member session found. Please select or register your profile first.");
-      setAuthTab("switch");
+      alert("⚠️ No active team member session found. Please sign in with your email and password first.");
+      setAuthTab("login");
       setIsAuthModalOpen(true);
       return;
     }
@@ -1163,6 +1181,7 @@ export default function WorkMateEnterpriseApp() {
           role: userForm.role,
           department: assignedDept,
           avatar: userForm.avatar.trim() || undefined,
+          requesterRole: activeUser?.role || (users.length === 0 ? "SUPER_ADMIN" : "USER"),
         }),
       });
 
@@ -1182,11 +1201,10 @@ export default function WorkMateEnterpriseApp() {
         avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
       });
       await refreshAllData();
-      handleLoginAs(data);
       triggerActionModal(
         "success",
         "New Team Member Created!",
-        `Team member "${data.name}" has been registered with role "${data.role}" in "${assignedDept}". You are now logged in as ${data.name}.`,
+        `Team member "${data.name}" (${data.email}) has been successfully created with role "${data.role}" in "${assignedDept}". They can now sign in using their registered email and password.`,
         "USER",
         undefined,
         [
@@ -1557,8 +1575,8 @@ export default function WorkMateEnterpriseApp() {
     if (!selectedIssue || !newCommentText.trim()) return;
 
     if (!activeUser) {
-      alert("⚠️ Please log in or register a team member first to post updates.");
-      setAuthTab("switch");
+      alert("⚠️ Please sign in with your email and password first to post updates.");
+      setAuthTab("login");
       setIsAuthModalOpen(true);
       return;
     }
@@ -1637,8 +1655,8 @@ export default function WorkMateEnterpriseApp() {
     if (!taskForm.title.trim()) return;
 
     if (!activeUser) {
-      alert("⚠️ Please log in or create a team member first to assign work orders.");
-      setAuthTab("register");
+      alert("⚠️ Please sign in with your email and password first to assign work orders.");
+      setAuthTab("login");
       setIsAuthModalOpen(true);
       return;
     }
@@ -1855,7 +1873,7 @@ export default function WorkMateEnterpriseApp() {
             </button>
 
             {/* Add User Button (Only SuperAdmin has user creation authority) */}
-            {(!activeUser || activeUser.role === "SUPER_ADMIN" || users.length === 0) && (
+            {activeUser?.role === "SUPER_ADMIN" && (
               <button
                 className="btn btn-secondary"
                 onClick={() => {
@@ -1885,7 +1903,7 @@ export default function WorkMateEnterpriseApp() {
           {/* User Session & Identity Group */}
           {activeUser ? (
             <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-              {/* Active User Pill & Compact Role Switcher */}
+              {/* Active User Pill */}
               <div className="user-switcher" title="Active Logged In Session">
                 {activeUser.avatar ? (
                   <img
@@ -1915,25 +1933,6 @@ export default function WorkMateEnterpriseApp() {
                     {activeUser.role} · {activeUser.department || "Operations"}
                   </span>
                 </div>
-                <select
-                  className="user-select"
-                  value={activeUser.id}
-                  onChange={(e) => {
-                    const found = users.find((u) => u.id === e.target.value);
-                    if (found) handleLoginAs(found);
-                  }}
-                  title="Quick switch active user session"
-                >
-                  {users.map((u) => {
-                    const icon = u.role === "SUPER_ADMIN" ? "👑 " : u.role === "MANAGER" ? "👔 " : u.role === "ENGINEER" ? "🛠️ " : "👤 ";
-                    const roleLabel = u.role === "SUPER_ADMIN" ? "Admin" : u.role;
-                    return (
-                      <option key={u.id} value={u.id}>
-                        {u.id === activeUser.id ? `(${roleLabel})` : `${icon}${u.name} (${roleLabel})`}
-                      </option>
-                    );
-                  })}
-                </select>
               </div>
 
               {/* Edit Profile Button */}
@@ -1944,16 +1943,6 @@ export default function WorkMateEnterpriseApp() {
                 title="Edit your profile picture & name"
               >
                 Profile
-              </button>
-
-              {/* Switch Account Button */}
-              <button
-                className="btn btn-secondary"
-                style={{ height: "32px", padding: "0 10px", fontSize: "11.5px", display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}
-                onClick={() => { setAuthTab("switch"); setIsAuthModalOpen(true); }}
-                title="Switch between existing accounts"
-              >
-                Switch
               </button>
 
               {/* Logout Button */}
@@ -1993,29 +1982,20 @@ export default function WorkMateEnterpriseApp() {
         <div className="logged-out-banner">
           <div>
             <div style={{ fontSize: "15px", fontWeight: "700", color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
-              <span>👋</span> Welcome to WorkMate
+              <span>👋</span> Welcome to WorkMate AI
             </div>
             <div style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
-              Sign in with your email or choose a user profile to manage tickets and view assigned tasks.
+              Please sign in with your registered email and password to access your dashboard, or ask SuperAdmin to provision an ID.
             </div>
           </div>
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <button
               className="btn btn-primary"
-              style={{ padding: "8px 16px", fontSize: "13px" }}
+              style={{ padding: "8px 18px", fontSize: "13px", fontWeight: "600" }}
               onClick={() => { setAuthTab("login"); setIsAuthModalOpen(true); }}
             >
               Sign In
             </button>
-            {users.length > 0 && (
-              <button
-                className="btn btn-secondary"
-                style={{ padding: "8px 14px", fontSize: "13px" }}
-                onClick={() => { setAuthTab("switch"); setIsAuthModalOpen(true); }}
-              >
-                Choose Profile ({users.length})
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -2043,17 +2023,17 @@ export default function WorkMateEnterpriseApp() {
                 <span className="badge badge-assigned" style={{ fontSize: "10px" }}>{switchNotification.role}</span>
               </div>
               <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                {switchNotification.role === "SUPER_ADMIN" 
+                {switchNotification.role === "SUPER_ADMIN"
                   ? "Admin permissions: Full access to tickets, team management, and catalog."
                   : switchNotification.role === "MANAGER"
-                  ? `Manager permissions (${switchNotification.department || "Operations"}): Can reassign and review tickets.`
-                  : switchNotification.role === "ENGINEER"
-                  ? `Engineer permissions (${switchNotification.department || "Engineering"}): Can resolve assigned technical tickets.`
-                  : "User permissions: Can create tickets and track personal submissions."}
+                    ? `Manager permissions (${switchNotification.department || "Operations"}): Can reassign and review tickets.`
+                    : switchNotification.role === "ENGINEER"
+                      ? `Engineer permissions (${switchNotification.department || "Engineering"}): Can resolve assigned technical tickets.`
+                      : "User permissions: Can create tickets and track personal submissions."}
               </div>
             </div>
           </div>
-          <button 
+          <button
             style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "16px" }}
             onClick={() => setSwitchNotification(null)}
           >
@@ -2075,8 +2055,8 @@ export default function WorkMateEnterpriseApp() {
           <span>📁</span> Closed History
           <span className="tab-badge">{issues.filter((i) => i.status === "CLOSED").length}</span>
         </button>
-        <button 
-          className={`nav-tab-btn ${activeTab === "attendance" ? "active" : ""}`} 
+        <button
+          className={`nav-tab-btn ${activeTab === "attendance" ? "active" : ""}`}
           onClick={() => {
             setActiveTab("attendance");
             void fetchAttendanceLogs();
@@ -2088,8 +2068,8 @@ export default function WorkMateEnterpriseApp() {
         <button className={`nav-tab-btn ${activeTab === "services" ? "active" : ""}`} onClick={() => setActiveTab("services")}>
           <span>🌐</span> Services & Apps ({services.length})
         </button>
-        <button 
-          className={`nav-tab-btn ${activeTab === "team" ? "active" : ""}`} 
+        <button
+          className={`nav-tab-btn ${activeTab === "team" ? "active" : ""}`}
           onClick={() => setActiveTab("team")}
         >
           <span>👥</span> Team Members
@@ -3131,23 +3111,31 @@ export default function WorkMateEnterpriseApp() {
 
         const myTodayPunchIn = activeUser
           ? attendanceLogs.find(
-              (l) =>
-                (l.userId === activeUser.id || l.userEmail.toLowerCase() === activeUser.email.toLowerCase()) &&
-                (l.shiftDate === todayStr || new Date(l.timestamp).toISOString().slice(0, 10) === todayStr) &&
-                l.action === "PUNCH_IN"
-            )
+            (l) =>
+              (l.userId === activeUser.id || l.userEmail.toLowerCase() === activeUser.email.toLowerCase()) &&
+              (l.shiftDate === todayStr || new Date(l.timestamp).toISOString().slice(0, 10) === todayStr) &&
+              l.action === "PUNCH_IN"
+          )
           : null;
 
         const myTodayPunchOut = activeUser
           ? attendanceLogs.find(
-              (l) =>
-                (l.userId === activeUser.id || l.userEmail.toLowerCase() === activeUser.email.toLowerCase()) &&
-                (l.shiftDate === todayStr || new Date(l.timestamp).toISOString().slice(0, 10) === todayStr) &&
-                l.action === "PUNCH_OUT"
-            )
+            (l) =>
+              (l.userId === activeUser.id || l.userEmail.toLowerCase() === activeUser.email.toLowerCase()) &&
+              (l.shiftDate === todayStr || new Date(l.timestamp).toISOString().slice(0, 10) === todayStr) &&
+              l.action === "PUNCH_OUT"
+          )
           : null;
 
         const filteredAttendance = attendanceLogs.filter((log) => {
+          // Normal users / engineers strictly see only their own attendance records
+          if (activeUser?.role !== "SUPER_ADMIN") {
+            const isMine =
+              log.userId === activeUser?.id ||
+              log.userEmail.toLowerCase() === (activeUser?.email || "").toLowerCase();
+            if (!isMine) return false;
+          }
+
           const q = attendanceSearch.toLowerCase();
           const matchesSearch =
             !q ||
@@ -3161,13 +3149,17 @@ export default function WorkMateEnterpriseApp() {
           return matchesSearch && matchesRole;
         });
 
+        const isSuperAdmin = activeUser?.role === "SUPER_ADMIN";
+
         return (
           <div>
             {/* Header & Export Bar */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                  <h2 style={{ fontSize: "20px", fontWeight: "800", color: "#fff" }}>Staff Attendance & Shift Punch Terminal</h2>
+                  <h2 style={{ fontSize: "20px", fontWeight: "800", color: "#fff" }}>
+                    {isSuperAdmin ? "Staff Attendance & Shift Punch Terminal" : "My Attendance & Shift Punch Terminal"}
+                  </h2>
                   <span className="attendance-badge-present">
                     <span className="attendance-dot"></span> Shift 9:00 AM – 5:30 PM
                   </span>
@@ -3188,25 +3180,27 @@ export default function WorkMateEnterpriseApp() {
                   <span style={{
                     fontSize: "11px",
                     fontWeight: "700",
-                    background: "rgba(139, 92, 246, 0.15)",
-                    color: "#c084fc",
-                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                    background: isSuperAdmin ? "rgba(139, 92, 246, 0.15)" : "rgba(56, 189, 248, 0.15)",
+                    color: isSuperAdmin ? "#c084fc" : "#38bdf8",
+                    border: `1px solid ${isSuperAdmin ? "rgba(139, 92, 246, 0.3)" : "rgba(56, 189, 248, 0.3)"}`,
                     padding: "3px 8px",
                     borderRadius: "20px",
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "4px"
                   }}>
-                    🗓️ 30-Day Auto-Scrap Cycle
+                    {isSuperAdmin ? "👑 Enterprise Audit (All Staff)" : `👤 Personal View (${activeUser?.name || "My Logs"})`}
                   </span>
                 </div>
                 <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
-                  Everyday attendance is marked by punching at 9:00 AM (with 30-min relaxation buffer) and logout at 5:30 PM. 8h 30m shift cooldown operates upon logout. Historical records roll on a fresh 30-day cycle.
+                  {isSuperAdmin
+                    ? "Everyday attendance is marked by punching at 9:00 AM (with 30-min relaxation buffer) and logout at 5:30 PM. SuperAdmin enterprise audit log."
+                    : "Mark your daily shift punch at 9:00 AM (30-min grace buffer up to 9:30 AM) and punch out at 5:30 PM. Viewing your personal verified attendance history."}
                 </p>
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                {activeUser?.role === "SUPER_ADMIN" && (
+                {isSuperAdmin && (
                   <button
                     className="btn btn-secondary"
                     style={{ height: "34px", padding: "0 10px", fontSize: "12px", border: "1px solid rgba(244, 63, 94, 0.3)" }}
@@ -3220,14 +3214,14 @@ export default function WorkMateEnterpriseApp() {
                 <button
                   className="export-btn"
                   onClick={handleExportAttendanceCsv}
-                  title="Export filtered attendance records to CSV (Excel compatible)"
+                  title={isSuperAdmin ? "Export all staff attendance records to CSV" : "Export my personal attendance records to CSV"}
                 >
-                  <span>📥</span> Export Report (CSV)
+                  <span>📥</span> {isSuperAdmin ? "Export Report (CSV)" : "Export My Records (CSV)"}
                 </button>
 
                 <a
-                  href={`${API_BASE}/api/attendance/export${attendanceDateFilter ? `?date=${attendanceDateFilter}` : ""}`}
-                  download={`WorkMate_Attendance_Report${attendanceDateFilter ? `_${attendanceDateFilter}` : ""}.csv`}
+                  href={`${API_BASE}/api/attendance/export?${!isSuperAdmin && activeUser ? `userId=${activeUser.id}&` : ""}${attendanceDateFilter ? `date=${attendanceDateFilter}` : ""}`}
+                  download={isSuperAdmin ? `WorkMate_Attendance_Report${attendanceDateFilter ? `_${attendanceDateFilter}` : ""}.csv` : `WorkMate_My_Attendance_${activeUser?.name?.replace(/\s+/g, "_")}.csv`}
                   className="btn btn-secondary"
                   style={{ height: "34px", padding: "0 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none" }}
                   title="Direct server-side CSV download"
@@ -3396,8 +3390,12 @@ export default function WorkMateEnterpriseApp() {
                   ⏱️
                 </div>
                 <div>
-                  <div className="attendance-metric-val">{attendanceStats.todayCount}</div>
-                  <div className="attendance-metric-label">Today's Check-ins ({todayStr})</div>
+                  <div className="attendance-metric-val">
+                    {isSuperAdmin ? attendanceStats.todayCount : (myTodayPunchIn ? (myTodayPunchOut ? 2 : 1) : 0)}
+                  </div>
+                  <div className="attendance-metric-label">
+                    {isSuperAdmin ? `Today's Check-ins (${todayStr})` : `My Punches Today (${todayStr})`}
+                  </div>
                 </div>
               </div>
 
@@ -3406,8 +3404,12 @@ export default function WorkMateEnterpriseApp() {
                   👥
                 </div>
                 <div>
-                  <div className="attendance-metric-val">{attendanceStats.uniqueStaffToday}</div>
-                  <div className="attendance-metric-label">Unique Staff On-Duty Today</div>
+                  <div className="attendance-metric-val">
+                    {isSuperAdmin ? attendanceStats.uniqueStaffToday : (myTodayPunchOut ? "Completed" : myTodayPunchIn ? "On Duty" : "Off Duty")}
+                  </div>
+                  <div className="attendance-metric-label">
+                    {isSuperAdmin ? "Unique Staff On-Duty Today" : "My Current Duty Status"}
+                  </div>
                 </div>
               </div>
 
@@ -3416,8 +3418,14 @@ export default function WorkMateEnterpriseApp() {
                   📜
                 </div>
                 <div>
-                  <div className="attendance-metric-val">{attendanceStats.totalCount}</div>
-                  <div className="attendance-metric-label">{attendanceDateFilter ? `Logs on ${attendanceDateFilter}` : "Active 30-Day Cycle Logs"}</div>
+                  <div className="attendance-metric-val">
+                    {isSuperAdmin ? attendanceStats.totalCount : filteredAttendance.length}
+                  </div>
+                  <div className="attendance-metric-label">
+                    {isSuperAdmin
+                      ? (attendanceDateFilter ? `Logs on ${attendanceDateFilter}` : "Active 30-Day Cycle Logs")
+                      : (attendanceDateFilter ? `My Logs on ${attendanceDateFilter}` : "My Total Cycle Logs")}
+                  </div>
                 </div>
               </div>
 
@@ -3426,8 +3434,12 @@ export default function WorkMateEnterpriseApp() {
                   🛡️
                 </div>
                 <div>
-                  <div className="attendance-metric-val">30-Day Cycle</div>
-                  <div className="attendance-metric-label">Auto-Scraping Active</div>
+                  <div className="attendance-metric-val">
+                    {isSuperAdmin ? "30-Day Cycle" : "30m Grace"}
+                  </div>
+                  <div className="attendance-metric-label">
+                    {isSuperAdmin ? "Auto-Scraping Active" : "Arrival Grace Buffer"}
+                  </div>
                 </div>
               </div>
             </div>
@@ -3465,7 +3477,7 @@ export default function WorkMateEnterpriseApp() {
                 </span>
                 <input
                   type="text"
-                  placeholder="Search staff, email, dept, or shift remarks..."
+                  placeholder={isSuperAdmin ? "Search staff, email, dept, or remarks..." : "Search in my shift records..."}
                   value={attendanceSearch}
                   onChange={(e) => setAttendanceSearch(e.target.value)}
                   style={{
@@ -3558,20 +3570,22 @@ export default function WorkMateEnterpriseApp() {
                   )}
                 </div>
 
-                {/* Role Filter Dropdown */}
-                <select
-                  className="filter-select"
-                  value={attendanceRoleFilter}
-                  onChange={(e) => setAttendanceRoleFilter(e.target.value)}
-                  style={{ height: "36px", padding: "0 10px", fontSize: "12px", borderRadius: "8px" }}
-                >
-                  <option value="ALL">All Roles</option>
-                  <option value="SUPER_ADMIN">Super Admin</option>
-                  <option value="ADMIN">Admin</option>
-                  <option value="MANAGER">Manager</option>
-                  <option value="ENGINEER">Engineer</option>
-                  <option value="USER">User</option>
-                </select>
+                {/* Role Filter Dropdown - Only SuperAdmin can filter across all company roles */}
+                {isSuperAdmin && (
+                  <select
+                    className="filter-select"
+                    value={attendanceRoleFilter}
+                    onChange={(e) => setAttendanceRoleFilter(e.target.value)}
+                    style={{ height: "36px", padding: "0 10px", fontSize: "12px", borderRadius: "8px" }}
+                  >
+                    <option value="ALL">All Roles</option>
+                    <option value="SUPER_ADMIN">Super Admin</option>
+                    <option value="ADMIN">Admin</option>
+                    <option value="MANAGER">Manager</option>
+                    <option value="ENGINEER">Engineer</option>
+                    <option value="USER">User</option>
+                  </select>
+                )}
 
                 {/* Reset Filters */}
                 {(attendanceSearch || attendanceRoleFilter !== "ALL" || attendanceDateFilter) && (
@@ -3892,13 +3906,6 @@ export default function WorkMateEnterpriseApp() {
 
               <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
                 <button
-                  className="btn btn-primary"
-                  style={{ padding: "8px 18px", fontSize: "13px" }}
-                  onClick={() => { setAuthTab("switch"); setIsAuthModalOpen(true); }}
-                >
-                  Switch to Admin Account
-                </button>
-                <button
                   className="btn btn-secondary"
                   style={{ padding: "8px 18px", fontSize: "13px" }}
                   onClick={() => setActiveTab("tickets")}
@@ -3988,20 +3995,12 @@ export default function WorkMateEnterpriseApp() {
 
                         <div style={{ display: "flex", gap: "6px" }}>
                           <button
-                            className="btn btn-secondary"
-                            style={{ padding: "4px 8px", fontSize: "11px" }}
-                            onClick={() => handleLoginAs(u)}
-                            title="Switch active session to this user"
-                          >
-                            {activeUser?.id === u.id ? "✓ Active" : "Log In →"}
-                          </button>
-                          <button
                             className="btn btn-danger"
                             style={{ padding: "4px 8px", fontSize: "11px", color: "#fb7185", background: "rgba(244, 63, 94, 0.15)" }}
                             onClick={() => handleDeleteUser(u.id, u.name)}
-                            title="Delete user"
+                            title="Delete user (SuperAdmin only)"
                           >
-                            🗑️
+                            🗑️ Delete
                           </button>
                         </div>
                       </div>
@@ -4523,8 +4522,8 @@ export default function WorkMateEnterpriseApp() {
                   <option value="ASSIGNED">Assigned</option>
                   <option value="IN_PROGRESS">In Progress</option>
                   <option value="RESOLVED">Resolved</option>
-                  <option 
-                    value="CLOSED" 
+                  <option
+                    value="CLOSED"
                     disabled={activeUser?.role === "ENGINEER"}
                   >
                     Closed {activeUser?.role === "ENGINEER" ? "(Manager Approval Required)" : ""}
@@ -5020,12 +5019,12 @@ export default function WorkMateEnterpriseApp() {
             <div className="modal-header">
               <div>
                 <h2 className="modal-title">
-                  {!activeUser ? "Sign In to WorkMate" : "Account & Profile"}
+                  {!activeUser ? "Sign In to WorkMate AI" : "Account Settings"}
                 </h2>
                 <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
                   {!activeUser
-                    ? "Enter your email to sign in or choose an account."
-                    : `Logged in as ${activeUser.name} (${activeUser.role}). Switch accounts or edit your profile.`}
+                    ? "Enter your registered email and password to access your workspace."
+                    : `Signed in as ${activeUser.name} (${activeUser.role} · ${activeUser.department || "Operations"}).`}
                 </p>
               </div>
               {activeUser && (
@@ -5047,13 +5046,7 @@ export default function WorkMateEnterpriseApp() {
               >
                 Sign In
               </button>
-              <button
-                className={`auth-tab ${authTab === "switch" ? "active" : ""}`}
-                onClick={() => setAuthTab("switch")}
-              >
-                Choose Account ({users.length})
-              </button>
-              {(!activeUser || activeUser.role === "SUPER_ADMIN" || users.length === 0) && (
+              {(activeUser?.role === "SUPER_ADMIN" || users.length === 0) && (
                 <button
                   className={`auth-tab ${authTab === "register" ? "active" : ""}`}
                   onClick={() => setAuthTab("register")}
@@ -5187,153 +5180,31 @@ export default function WorkMateEnterpriseApp() {
                   </button>
                 </form>
 
-                {/* Quick Pick from Registered Accounts */}
-                {users.length > 0 && (
-                  <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-                      <span style={{ fontSize: "11px", fontWeight: "700", color: "var(--text-muted)", textTransform: "uppercase" }}>
-                        Or Click a Registered Account:
-                      </span>
-                      <span style={{ fontSize: "11px", color: "var(--accent-cyan)" }}>
-                        {users.length} Active Accounts
-                      </span>
-                    </div>
-
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "220px", overflowY: "auto", paddingRight: "4px" }}>
-                      {users.map((u) => {
-                        const isCurrent = activeUser?.id === u.id;
-                        return (
-                          <div
-                            key={u.id}
-                            onClick={() => handleLoginAs(u)}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              padding: "9px 14px",
-                              background: isCurrent ? "rgba(99, 102, 241, 0.15)" : "rgba(255, 255, 255, 0.03)",
-                              border: `1px solid ${isCurrent ? "var(--accent-primary)" : "var(--border-subtle)"}`,
-                              borderRadius: "10px",
-                              cursor: "pointer",
-                              transition: "all 0.15s ease",
-                            }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                              {u.avatar ? (
-                                <img src={u.avatar} alt={u.name} style={{ width: "34px", height: "34px", borderRadius: "50%", objectFit: "cover" }} />
-                              ) : (
-                                <div style={{ width: "34px", height: "34px", borderRadius: "50%", background: "#4f46e5", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "13px", fontWeight: "700" }}>
-                                  {u.name.charAt(0)}
-                                </div>
-                              )}
-                              <div>
-                                <div style={{ fontSize: "13px", fontWeight: "700", color: "#fff" }}>
-                                  {u.name}
-                                </div>
-                                <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{u.email}</div>
-                              </div>
-                            </div>
-
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                              <span className={`badge ${u.role === "SUPER_ADMIN" ? "badge-urgent" : u.role === "MANAGER" ? "badge-assigned" : "badge-medium"}`} style={{ fontSize: "10px" }}>
-                                {u.role === "SUPER_ADMIN" ? "👑 SUPER_ADMIN" : u.role}
-                              </span>
-                              <span style={{ fontSize: "12px", color: "var(--accent-primary)" }}>Log In →</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                {/* Account Provisioning Notice for New Users */}
+                <div style={{
+                  marginTop: "16px",
+                  padding: "14px 16px",
+                  background: "rgba(99, 102, 241, 0.06)",
+                  border: "1px solid rgba(99, 102, 241, 0.18)",
+                  borderRadius: "10px",
+                  fontSize: "12px",
+                  color: "var(--text-muted)",
+                  lineHeight: "1.5",
+                }}>
+                  <div style={{ fontWeight: "700", color: "#fff", marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>🛡️</span> Role-Based Account Access
                   </div>
-                )}
+                  <div>
+                    User accounts are strictly managed and provisioned by the <strong>SuperAdmin</strong>. If you do not have an active account or forgot your password, please contact your SuperAdmin to create your login credentials.
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* TAB 1: EXISTING ACCOUNTS */}
-            {authTab === "switch" && (
-              <div>
-                {users.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "40px 20px", background: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px dashed var(--border-subtle)" }}>
-                    <div style={{ fontSize: "36px", marginBottom: "10px" }}>👤</div>
-                    <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "6px" }}>No accounts found in database</h3>
-                    <p style={{ fontSize: "13px", color: "var(--text-dim)", marginBottom: "18px" }}>
-                      Get started by registering your first user account and defining their role.
-                    </p>
-                    <button className="btn btn-primary" onClick={() => setAuthTab("register")}>
-                      + Register First Team Member
-                    </button>
-                  </div>
-                ) : (
-                  <div className="auth-user-grid">
-                    {users.map((u) => {
-                      const isCurrent = activeUser?.id === u.id;
-                      return (
-                        <div
-                          key={u.id}
-                          className="auth-user-card"
-                          style={{
-                            borderColor: isCurrent ? "var(--accent-primary)" : "var(--border-subtle)",
-                            background: isCurrent ? "rgba(99, 102, 241, 0.08)" : undefined,
-                          }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                            {u.avatar ? (
-                              <img src={u.avatar} alt={u.name} style={{ width: "42px", height: "42px", borderRadius: "50%", objectFit: "cover" }} />
-                            ) : (
-                              <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "#4f46e5", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" }}>
-                                {u.name.charAt(0)}
-                              </div>
-                            )}
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: "14px", fontWeight: "800", display: "flex", alignItems: "center", gap: "6px" }}>
-                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</span>
-                                {isCurrent && <span style={{ fontSize: "10px", background: "var(--accent-primary)", padding: "2px 6px", borderRadius: "10px" }}>CURRENT</span>}
-                              </div>
-                              <div style={{ fontSize: "11px", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {u.email}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                            <span className={`badge ${u.role === "SUPER_ADMIN" ? "badge-urgent" : u.role === "MANAGER" ? "badge-assigned" : "badge-medium"}`}>
-                              {u.role === "SUPER_ADMIN" ? "👑 SUPER_ADMIN" : u.role}
-                            </span>
-                            <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>
-                              {u.department || "Operations"}
-                            </span>
-                          </div>
-
-                          <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
-                            <button
-                              className="btn btn-primary"
-                              style={{ flex: 1, padding: "8px", fontSize: "12px" }}
-                              onClick={() => handleLoginAs(u)}
-                            >
-                              {isCurrent ? "✓ Active Session" : `Log In as ${u.name.split(" ")[0]} →`}
-                            </button>
-                            {(!activeUser || activeUser.role === "SUPER_ADMIN") && (
-                              <button
-                                className="btn btn-danger"
-                                style={{ padding: "8px 12px", fontSize: "12px", background: "rgba(244, 63, 94, 0.15)", color: "#fb7185" }}
-                                onClick={() => handleDeleteUser(u.id, u.name)}
-                                title="Delete user (SuperAdmin only)"
-                              >
-                                🗑️
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* TAB 2: REGISTER NEW MEMBER */}
+            {/* TAB 1: REGISTER NEW MEMBER (SUPERADMIN ONLY) */}
             {authTab === "register" && (
-              <form onSubmit={handleCreateUser}>
+              (activeUser?.role === "SUPER_ADMIN" || users.length === 0) ? (
+                <form onSubmit={handleCreateUser}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                   <div className="form-group">
                     <label className="form-label">Full Name *</label>
@@ -5428,8 +5299,8 @@ export default function WorkMateEnterpriseApp() {
                             department: isSuperAdmin
                               ? "All Engineering Squads (Global)"
                               : userForm.department === "All Engineering Squads (Global)"
-                              ? "Backend & Core APIs"
-                              : userForm.department,
+                                ? "Backend & Core APIs"
+                                : userForm.department,
                           });
                         }}
                       >
@@ -5516,10 +5387,24 @@ export default function WorkMateEnterpriseApp() {
                     </button>
                   )}
                   <button className="btn btn-primary" type="submit" disabled={actionLoading}>
-                    {actionLoading ? "Creating..." : "✨ Create Account & Sign In"}
+                    {actionLoading ? "Provisioning..." : "✨ Provision Team Member"}
                   </button>
                 </div>
               </form>
+              ) : (
+                <div style={{ textAlign: "center", padding: "40px 20px" }}>
+                  <div style={{ fontSize: "36px", marginBottom: "12px" }}>🔒</div>
+                  <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#fff", marginBottom: "8px" }}>
+                    SuperAdmin Authority Required
+                  </h3>
+                  <p style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "420px", margin: "0 auto 18px" }}>
+                    User account creation is restricted to SuperAdmins. Please contact your organization administrator to provision an account for you.
+                  </p>
+                  <button className="btn btn-secondary" onClick={() => setAuthTab("login")}>
+                    Return to Sign In
+                  </button>
+                </div>
+              )
             )}
 
             {/* TAB 3: SELF-SERVICE PROFILE & AVATAR EDITOR */}
@@ -5960,31 +5845,31 @@ export default function WorkMateEnterpriseApp() {
             toast.actionKind === "RAISE"
               ? "action-raise"
               : toast.actionKind === "RESOLVE"
-              ? "action-resolve"
-              : toast.actionKind === "CLOSE"
-              ? "action-close"
-              : toast.actionKind === "REASSIGN"
-              ? "action-reassign"
-              : toast.actionKind === "ATTENDANCE"
-              ? "action-attendance"
-              : toast.actionKind === "TASK"
-              ? "action-task"
-              : "action-general";
+                ? "action-resolve"
+                : toast.actionKind === "CLOSE"
+                  ? "action-close"
+                  : toast.actionKind === "REASSIGN"
+                    ? "action-reassign"
+                    : toast.actionKind === "ATTENDANCE"
+                      ? "action-attendance"
+                      : toast.actionKind === "TASK"
+                        ? "action-task"
+                        : "action-general";
 
           const icon =
             toast.actionKind === "RAISE"
               ? "🎫"
               : toast.actionKind === "RESOLVE"
-              ? "✅"
-              : toast.actionKind === "CLOSE"
-              ? "📁"
-              : toast.actionKind === "REASSIGN"
-              ? "🔄"
-              : toast.actionKind === "ATTENDANCE"
-              ? "⏱️"
-              : toast.actionKind === "TASK"
-              ? "📋"
-              : "ℹ️";
+                ? "✅"
+                : toast.actionKind === "CLOSE"
+                  ? "📁"
+                  : toast.actionKind === "REASSIGN"
+                    ? "🔄"
+                    : toast.actionKind === "ATTENDANCE"
+                      ? "⏱️"
+                      : toast.actionKind === "TASK"
+                        ? "📋"
+                        : "ℹ️";
 
           return (
             <div key={toast.id} className={`toast-card ${actionClass}`}>

@@ -244,6 +244,16 @@ router.post("/", async (req, res, next) => {
   }
 
   try {
+    const userCount = await prisma.user.count();
+    if (userCount > 0) {
+      const requesterRole = (req.body.requesterRole || req.headers["x-user-role"]) as string;
+      if (requesterRole !== "SUPER_ADMIN") {
+        return res.status(403).json({
+          error: "Access Denied: Only SuperAdmin is authorized to create and provision new accounts.",
+        });
+      }
+    }
+
     const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
     if (existing) {
       return res.status(409).json({ error: "A user with this email address already exists" });
