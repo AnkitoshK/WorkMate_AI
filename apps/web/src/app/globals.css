@@ -461,9 +461,17 @@ button {
   flex: 1;
 }
 
-.search-input-wrapper {
+.search-input-wrapper,
+.search-box {
   position: relative;
   min-width: 250px;
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .search-input {

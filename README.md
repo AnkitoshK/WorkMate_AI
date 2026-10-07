@@ -1,6 +1,6 @@
 # ⚡ WorkMate AI — Full-Stack Industrial Ticketing & Field Operations Platform
 
-> A full-stack, enterprise-grade task and incident management platform for field engineers and office operations teams, powered by autonomous AI triage, Neon Serverless Postgres, Express REST API, Next.js dashboard, and Expo React Native mobile.
+> A full-stack, enterprise-grade task and incident management platform for engineering and office operations teams, powered by autonomous AI triage, Neon Serverless Postgres, Express REST API, and Next.js web application.
 
 ---
 
@@ -29,33 +29,31 @@
      - 👷 **Alex Rivera** (Senior Software Engineer)
      - 👩‍💻 **Priya Sharma** (Network & Systems Specialist)
 
-5. **Cross-Platform Experience**:
-   - **Web Dashboard**: Next.js App Router with ultra-premium dark glassmorphic styling, real-time KPI metrics, and AI sandbox.
-   - **Mobile App**: Expo React Native on-call software engineer application for rapid on-site updates and mobile incident logging.
+5. **Enterprise Web Experience**:
+   - **Web Dashboard**: Next.js App Router with ultra-premium dark glassmorphic styling, real-time KPI metrics, shift attendance tracking, closed ticket archiving, and AI sandbox.
 
 ---
 
 ## 🏗️ Architecture
 
 ```text
-┌───────────────────────────────┐        ┌───────────────────────────────┐
-│     Next.js Web Dashboard     │        │    Expo React Native Mobile   │
-│       (Admin & Dispatch)      │        │      (On-Call Engineers)      │
-└───────────────┬───────────────┘        └───────────────┬───────────────┘
-                │               HTTP / REST API          │
-                └───────────────────────┬────────────────┘
-                                        ▼
-                        ┌───────────────────────────────┐
-                        │     Express REST API Server   │
-                        │   (Routes, Services, AI Engine)│
-                        └───────────────┬───────────────┘
-                                        │
-                         Prisma ORM     │    AI Gateway / Gemini
-                                        ▼
-                        ┌───────────────────────────────┐
-                        │     Neon Serverless Postgres  │
-                        │   (Users, Issues, Comments)   │
-                        └───────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│                    Next.js Web Dashboard                      │
+│        (Executive Admin, Operations Dispatch & Field Ops)      │
+└───────────────────────────────┬───────────────────────────────┘
+                                │ HTTP / REST API
+                                ▼
+                ┌───────────────────────────────┐
+                │     Express REST API Server   │
+                │   (Routes, Services, AI Engine)│
+                └───────────────┬───────────────┘
+                                │
+                 Prisma ORM     │    AI Gateway / Gemini
+                                ▼
+                ┌───────────────────────────────┐
+                │     Neon Serverless Postgres  │
+                │   (Users, Issues, Comments)   │
+                └───────────────────────────────┘
 ```
 
 ---
@@ -73,7 +71,6 @@
 ## 🛠️ Tech Stack
 
 - **Frontend**: Next.js 15 App Router, React 19, Vanilla CSS Glassmorphism
-- **Mobile**: Expo SDK 57, React Native, Safe Area Context
 - **Backend**: Node.js, Express, TypeScript, Zod Validation
 - **Database & ORM**: Neon Serverless PostgreSQL, Prisma ORM
 - **AI Engine**: WorkMate Autonomous Domain Intelligence + Google Gemini Integration
@@ -85,16 +82,15 @@ FOR LIVE ACCESS - Please click this link - https://work-mate-j5h7ir51a-ankitoshs
 
 ## 💻 Quick Start Guide
 
-### ⚡ 1-Click Launch (All 3 Services)
+### ⚡ 1-Click Launch (All Services)
 Double-click `start-workmate.bat` or run:
 ```bash
-pnpm dev:all
-# or: pnpm start
+pnpm dev
+# or: pnpm dev:all
 ```
 This automatically launches:
 1. **Express API Server**: [http://localhost:4000](http://localhost:4000)
 2. **Next.js Web Portal**: [http://localhost:3000](http://localhost:3000)
-3. **Expo Mobile Metro**: [http://localhost:8081](http://localhost:8081)
 
 ---
 

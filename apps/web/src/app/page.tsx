@@ -3433,106 +3433,172 @@ export default function WorkMateEnterpriseApp() {
             </div>
 
             {/* Search, Date Filter & Role Filter Bar */}
-            <div className="filter-bar" style={{ marginBottom: "18px", flexWrap: "wrap", gap: "10px" }}>
-              <div className="search-box">
-                <span className="search-icon">🔍</span>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "12px",
+                background: "var(--bg-card)",
+                border: "1px solid var(--border-subtle)",
+                borderRadius: "12px",
+                padding: "10px 14px",
+                marginBottom: "20px",
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)"
+              }}
+            >
+              {/* Search input */}
+              <div style={{ position: "relative", flex: "1 1 260px", minWidth: "220px" }}>
+                <span
+                  style={{
+                    position: "absolute",
+                    left: "11px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    fontSize: "13px",
+                    color: "var(--text-dim)",
+                    pointerEvents: "none"
+                  }}
+                >
+                  🔍
+                </span>
                 <input
                   type="text"
-                  className="search-input"
-                  placeholder="Search staff name, email, department, or shift remarks..."
+                  placeholder="Search staff, email, dept, or shift remarks..."
                   value={attendanceSearch}
                   onChange={(e) => setAttendanceSearch(e.target.value)}
-                />
-              </div>
-
-              {/* Date Filter Control */}
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "var(--bg-card)", border: "1px solid var(--border-subtle)", borderRadius: "8px", padding: "0 10px", height: "38px" }}>
-                <span style={{ fontSize: "14px" }}>📅</span>
-                <input
-                  type="date"
-                  value={attendanceDateFilter}
-                  onChange={(e) => {
-                    const newDate = e.target.value;
-                    setAttendanceDateFilter(newDate);
-                    void fetchAttendanceLogs(newDate);
-                  }}
                   style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "#fff",
-                    fontSize: "12px",
-                    outline: "none",
-                    fontFamily: "inherit"
+                    width: "100%",
+                    height: "36px",
+                    padding: "0 12px 0 32px",
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border-subtle)",
+                    borderRadius: "8px",
+                    color: "var(--text-main)",
+                    fontSize: "12.5px",
+                    outline: "none"
                   }}
-                  title="Filter attendance by specific date"
                 />
               </div>
 
-              {/* Quick Date Presets */}
-              <div style={{ display: "flex", gap: "6px" }}>
-                <button
-                  className={`btn ${attendanceDateFilter === todayStr ? "btn-primary" : "btn-secondary"}`}
-                  style={{ height: "38px", padding: "0 10px", fontSize: "11.5px" }}
-                  onClick={() => {
-                    setAttendanceDateFilter(todayStr);
-                    void fetchAttendanceLogs(todayStr);
+              {/* Filter Controls: Date Capsule + Role Dropdown + Reset */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                {/* Unified Date Capsule */}
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border-subtle)",
+                    borderRadius: "8px",
+                    padding: "2px 6px",
+                    height: "36px"
                   }}
                 >
-                  Today
-                </button>
-
-                <button
-                  className={`btn ${attendanceDateFilter === yesterdayStr ? "btn-primary" : "btn-secondary"}`}
-                  style={{ height: "38px", padding: "0 10px", fontSize: "11.5px" }}
-                  onClick={() => {
-                    setAttendanceDateFilter(yesterdayStr);
-                    void fetchAttendanceLogs(yesterdayStr);
-                  }}
-                >
-                  Yesterday
-                </button>
-
-                {attendanceDateFilter && (
+                  <span style={{ fontSize: "13px", marginLeft: "2px", opacity: 0.8 }} title="Calendar">📅</span>
+                  <input
+                    type="date"
+                    value={attendanceDateFilter}
+                    onChange={(e) => {
+                      const newDate = e.target.value;
+                      setAttendanceDateFilter(newDate);
+                      void fetchAttendanceLogs(newDate);
+                    }}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: attendanceDateFilter ? "#60a5fa" : "var(--text-muted)",
+                      fontWeight: attendanceDateFilter ? "600" : "400",
+                      fontSize: "12px",
+                      outline: "none",
+                      cursor: "pointer",
+                      colorScheme: "dark",
+                      fontFamily: "inherit"
+                    }}
+                    title="Filter by specific date"
+                  />
+                  <div style={{ width: "1px", height: "18px", background: "var(--border-subtle)", margin: "0 2px" }} />
                   <button
-                    className="btn btn-secondary"
-                    style={{ height: "38px", padding: "0 10px", fontSize: "11.5px" }}
+                    type="button"
+                    className={`btn ${attendanceDateFilter === todayStr ? "btn-primary" : "btn-secondary"}`}
+                    style={{ height: "26px", padding: "0 9px", fontSize: "11px", borderRadius: "5px" }}
                     onClick={() => {
+                      setAttendanceDateFilter(todayStr);
+                      void fetchAttendanceLogs(todayStr);
+                    }}
+                  >
+                    Today
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${attendanceDateFilter === yesterdayStr ? "btn-primary" : "btn-secondary"}`}
+                    style={{ height: "26px", padding: "0 9px", fontSize: "11px", borderRadius: "5px" }}
+                    onClick={() => {
+                      setAttendanceDateFilter(yesterdayStr);
+                      void fetchAttendanceLogs(yesterdayStr);
+                    }}
+                  >
+                    Yesterday
+                  </button>
+                  {attendanceDateFilter && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ height: "26px", padding: "0 8px", fontSize: "10.5px", borderRadius: "5px", color: "#f87171" }}
+                      onClick={() => {
+                        setAttendanceDateFilter("");
+                        void fetchAttendanceLogs("");
+                      }}
+                      title="Clear date filter to view all logs"
+                    >
+                      All Dates ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Role Filter Dropdown */}
+                <select
+                  className="filter-select"
+                  value={attendanceRoleFilter}
+                  onChange={(e) => setAttendanceRoleFilter(e.target.value)}
+                  style={{ height: "36px", padding: "0 10px", fontSize: "12px", borderRadius: "8px" }}
+                >
+                  <option value="ALL">All Roles</option>
+                  <option value="SUPER_ADMIN">Super Admin</option>
+                  <option value="ADMIN">Admin</option>
+                  <option value="MANAGER">Manager</option>
+                  <option value="ENGINEER">Engineer</option>
+                  <option value="USER">User</option>
+                </select>
+
+                {/* Reset Filters */}
+                {(attendanceSearch || attendanceRoleFilter !== "ALL" || attendanceDateFilter) && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{
+                      height: "36px",
+                      padding: "0 12px",
+                      fontSize: "12px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      borderRadius: "8px"
+                    }}
+                    onClick={() => {
+                      setAttendanceSearch("");
+                      setAttendanceRoleFilter("ALL");
                       setAttendanceDateFilter("");
                       void fetchAttendanceLogs("");
                     }}
+                    title="Reset all filters"
                   >
-                    All Dates
+                    <span>✕</span> Clear
                   </button>
                 )}
               </div>
-
-              <select
-                className="filter-select"
-                value={attendanceRoleFilter}
-                onChange={(e) => setAttendanceRoleFilter(e.target.value)}
-              >
-                <option value="ALL">All Roles</option>
-                <option value="SUPER_ADMIN">Super Admin</option>
-                <option value="ADMIN">Admin</option>
-                <option value="MANAGER">Manager</option>
-                <option value="ENGINEER">Engineer</option>
-                <option value="USER">User</option>
-              </select>
-
-              {(attendanceSearch || attendanceRoleFilter !== "ALL" || attendanceDateFilter) && (
-                <button
-                  className="btn btn-secondary"
-                  style={{ height: "38px", padding: "0 12px", fontSize: "12px" }}
-                  onClick={() => {
-                    setAttendanceSearch("");
-                    setAttendanceRoleFilter("ALL");
-                    setAttendanceDateFilter("");
-                    void fetchAttendanceLogs("");
-                  }}
-                >
-                  Clear Filters
-                </button>
-              )}
             </div>
 
             {/* Attendance Records Table */}
@@ -3672,7 +3738,7 @@ export default function WorkMateEnterpriseApp() {
             <div>
               <h2 style={{ fontSize: "20px", fontWeight: "800" }}>Application & Project Service Catalog</h2>
               <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                Dynamic catalog of registered web portals, mobile apps, microservices, and databases. SuperAdmin can add, rename, and delete projects.
+                Dynamic catalog of registered web portals, microservices, and databases. SuperAdmin can add, rename, and delete projects.
               </p>
             </div>
             {activeUser?.role === "SUPER_ADMIN" ? (
@@ -5307,7 +5373,7 @@ export default function WorkMateEnterpriseApp() {
                     onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
                   />
                   <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
-                    The user will use this password to sign into the Web Portal and Mobile App.
+                    The user will use this password to sign into the Web Portal.
                   </div>
                 </div>
 
@@ -5645,7 +5711,7 @@ export default function WorkMateEnterpriseApp() {
                   >
                     <option value="WEB_APP">Web Application / Portal (Next.js/React)</option>
                     <option value="API_SERVICE">Backend Microservice / REST / GraphQL</option>
-                    <option value="MOBILE_APP">Mobile Client (iOS/Android React Native)</option>
+                    <option value="MOBILE_APP">Mobile Web Client (Responsive Web)</option>
                     <option value="CLOUD_INFRA">Cloud Infrastructure / Kubernetes EKS</option>
                     <option value="DATABASE">PostgreSQL / Redis Storage Cluster</option>
                     <option value="HARDWARE">Physical Server / Network Rack</option>

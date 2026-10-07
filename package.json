@@ -7,10 +7,9 @@
     "start": "pnpm --filter @workmate/api start",
     "build": "pnpm --filter @workmate/api build",
     "dev": "concurrently -n \"api,web\" -c \"cyan,magenta\" \"pnpm dev:api\" \"pnpm dev:web\"",
-    "dev:all": "concurrently -n \"api,web,mobile\" -c \"cyan,magenta,yellow\" \"pnpm dev:api\" \"pnpm dev:web\" \"pnpm dev:mobile\"",
+    "dev:all": "concurrently -n \"api,web\" -c \"cyan,magenta\" \"pnpm dev:api\" \"pnpm dev:web\"",
     "dev:api": "pnpm --filter @workmate/api dev",
     "dev:web": "pnpm --filter @workmate/web dev",
-    "dev:mobile": "pnpm --filter @workmate/mobile start",
     "build:api": "pnpm --filter @workmate/api build",
     "build:web": "pnpm --filter @workmate/web build",
     "start:api": "pnpm --filter @workmate/api start",
@@ -23,10 +22,5 @@
   "devDependencies": {
     "concurrently": "^10.0.5",
     "docx": "^9.8.1"
-  },
-  "pnpm": {
-    "overrides": {
-      "@expo/metro-runtime": "57.0.16"
-    }
   }
 }
