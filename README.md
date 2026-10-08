@@ -96,19 +96,22 @@ WorkMate AI enforces a strict, enterprise-compliant shift and attendance schedul
 
 ---
 
-### 2. Attendance Excel & CSV Calculation Report Flow
-The attendance module provides comprehensive operational reporting with automated calculation columns:
-- **Date-Wise Filter**: Inspect records by specific calendar date with **Today**, **Yesterday**, and **All Dates** quick filters.
-- **Role-Based Visibility**:
-  - `SUPER_ADMIN`: Views and exports attendance records for all employees across all engineering squads.
-  - Normal Employees (`ENGINEER`, `USER`, `MANAGER`): Can only view and export their own personal attendance audit trail.
-- **Excel Calculation-Ready CSV**:
-  - Both client-side blob export and direct server-side export (`GET /api/attendance/export`) include:
-    - **Punch In Time**: Exact morning punch time (e.g. `09:00:15 AM`).
-    - **Punch Out Time**: Exact evening punch time (e.g. `05:30:22 PM`).
-    - **Total Time (Punch In - Punch Out)**: Formatted shift duration (e.g. `8h 30m`).
-    - **Total Hours (Decimal Calculation)**: Pure numeric decimal hours (e.g. `8.50`).
-  - The decimal hours column enables direct, effortless formulas in Microsoft Excel or Google Sheets (e.g. `=SUM(L2:L100)` or `=AVERAGE(L2:L100)`) for payroll and attendance auditing without manual conversions.
+### 2. Multi-Tab Styled Colorful Excel (.xlsx) & CSV Calculation Reports
+WorkMate AI generates professionally styled, enterprise-grade Microsoft Excel (`.xlsx`) workbooks powered by `exceljs` across every operational tab, featuring distinctive curated color palettes, bold white titles, frozen headers, grid borders, zebra-striped rows, and automatic column sizing:
+
+| Tab | Excel Palette / Theme | Dominant Header Fill | Styled Columns & Status Pill Badging |
+|---|---|---|---|
+| **Active Tickets** | Navy Corporate | Deep Navy `#1E3A8A` | Ticket ID, Title, Status (`OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`), Priority, Category, Department, Assignee, Linked Asset |
+| **Closed Tickets Archive** | Indigo Audit | Deep Indigo `#312E81` | Ticket ID, Issue Title, Turnaround Duration, Resolution Notes, AI Root Cause Diagnosis, Resolver, Closed At |
+| **Attendance Records** | Emerald Workplace | Deep Emerald `#065F46` | Punch In Time, Punch Out Time, Shift Duration (`8h 30m`), Decimal Hours (`8.50` calculation-ready), Shift Remarks |
+| **Team Credentials** | Purple Security | Royal Purple `#581C87` | User ID, Name, Email, Role, Department, Password/Hash, Duty Shift Status (`ON_DUTY`, `OFF_DUTY`, `RE_ENTRY`) |
+| **Field Tasks** | Blue & Amber Dispatch | Deep Blue `#1E40AF` | Task ID, Task Title, Priority, Category, Owner/Assignee, Linked Ticket (`#TIK-001`), Due Date, Status (`TODO`, `DONE`) |
+
+- **Design Features**:
+  - **Frozen Top Row**: Header row remains visible while scrolling thousands of records.
+  - **Dynamic Status Highlighting**: Cell backgrounds for statuses (e.g. `ON_TIME` in emerald, `LATE` in rose, `URGENT` in red, `RESOLVED` in teal) are rendered directly in Excel cells.
+  - **Auto-Calculated Decimal Hours**: Allows direct spreadsheet formulas (`=SUM(...)`, `=AVERAGE(...)`) without manual string conversion.
+  - **Both Client & Server Download**: Download directly via browser client blob or direct streaming API endpoints (`GET /api/attendance/export-excel`, `GET /api/users/export-excel`).
 
 ---
 
@@ -135,8 +138,8 @@ WorkMate AI enforces granular, zero-leakage role governance across 5 enterprise 
 ---
 
 ### 5. SuperAdmin User Credential & Password Audit Export
-- **Security Compliance**: SuperAdmins can download the complete user credential directory via `GET /api/users/export`.
-- **Report Contents**: Exported CSV contains User ID, Full Name, Email Address, Role, Department, **Password (Hash / Security Code)**, Duty Status, Created At, Last Login At, and Last Logout At.
+- **Security Compliance**: SuperAdmins can download the complete user credential directory via `GET /api/users/export` (CSV) or `GET /api/users/export-excel` (Styled .xlsx).
+- **Report Contents**: Exported workbook contains User ID, Full Name, Email Address, Role, Department, **Password (Hash / Security Code)**, Duty Status, Created At, Last Login At, and Last Logout At.
 - **Non-Admin Protection**: Non-superadmin access attempts receive a strict `403 Forbidden` response.
 
 ---
@@ -151,8 +154,67 @@ WorkMate AI enforces granular, zero-leakage role governance across 5 enterprise 
 ---
 
 ### 7. Closed Incident Audit Archive & AI Copilot Workflow
-- **Closed Ticket Archive**: Completed incidents are archived in a dedicated database table with turnaround time, resolution notes, and root-cause records, exportable via CSV.
+- **Closed Ticket Archive**: Completed incidents are archived in a dedicated database table with turnaround time, resolution notes, and root-cause records, exportable via CSV and styled Excel.
 - **WorkMate AI Incident Copilot**: Autonomous triage extracts failure patterns, determines root causes, and recommends step-by-step SOP remediation plans.
+
+---
+
+### 8. Instant 0ms Sign-In & Login Acceleration Architecture
+WorkMate AI eliminates perceived authentication lag through a high-performance, multi-layered architecture:
+
+```text
+[User Clicks "Sign In" / User ID Card]
+       │
+       ├──► ⚡ Step 1: Instant Client Optimistic Activation (0ms)
+       │         • Modal closes immediately
+       │         • User session activates instantly with matched profile
+       │         • Dashboard renders active workspace with 0 loading delay
+       │
+       └──► 🚀 Step 2: High-Speed Background Verification & DB Touch
+                 • Backend Neon Postgres uses direct indexed lookup (findUnique)
+                 • Async unawaited lastLoginAt touch (no remote DB wait)
+                 • Shift cooldown validation (1-hour cooling check)
+                 • Graceful rollback & security alert if invalid or cooldown active
+```
+
+- **Instant 1-Click Sign-In via User ID**: In the Auth Modal, users can click any registered account card or their User ID to instantly access their profile without typing.
+- **Sub-Millisecond Neon Lookups**: Database queries target the unique lowercase email index directly, bypassing expensive table scans.
+- **Non-Blocking Audit Logging**: Session timestamps are updated asynchronously in the background so the user is never blocked by database network latency.
+
+---
+
+### 9. Basic Self-Service "Forgot Password" Flow (Zero-OTP / Zero-Email Configuration)
+WorkMate AI includes a straightforward, self-service password recovery flow that requires **no external SMTP server, SendGrid API key, or SMS gateway configuration**:
+
+```text
+[Forgot Password Clicked in Auth Modal]
+       │
+       ▼
+[Enter Registered Work Email]
+       │
+       ▼
+[Input New Password & Confirm Password (min. 6 characters)]
+       │
+       ▼
+[POST /api/users/forgot-password]
+       │
+       ├──► 🔍 Validates Email exists in Neon Database
+       │
+       ├──► 🔒 Hashes New Password with bcrypt (10 rounds)
+       │
+       ├──► 💾 Updates User record in PostgreSQL
+       │
+       ▼
+[Instant Automatic Sign-In]
+       │
+       ▼
+[Success Toast & Active Dashboard Session Initiated]
+```
+
+- **Zero-Dependency Architecture**: Teams can deploy and test locally or on preview environments without configuring complex email relays or waiting for OTP codes.
+- **Password Strength Enforced**: Requires a minimum of 6 characters with real-time confirmation matching.
+- **Existing Rules Preserved**: Resetting password does not bypass shift attendance records, the 1-hour cooling period, or role-based security boundaries.
+- **Immediate Access**: Once the password is updated, the user is immediately logged in to their account, avoiding redundant login prompts.
 
 ---
 

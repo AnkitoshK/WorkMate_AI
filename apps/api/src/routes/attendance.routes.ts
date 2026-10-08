@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { sendStyledExcelStream } from "../utils/excelExport.js";
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -492,6 +493,144 @@ router.get("/export", async (req, res, next) => {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(csvContent);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/attendance/export-excel - Styled Excel (.xlsx) export with colorful formatted headings
+router.get("/export-excel", async (req, res, next) => {
+  try {
+    const { userId, date } = req.query as { userId?: string; date?: string };
+
+    const where: any = {};
+    if (userId) {
+      where.userId = userId;
+    }
+    if (date && typeof date === "string" && date.trim()) {
+      where.shiftDate = date.trim();
+    }
+
+    const logs = await prisma.attendanceLog.findMany({
+      where,
+      orderBy: { timestamp: "desc" },
+    });
+
+    const shiftPunchMap = new Map<string, { punchIn?: Date; punchOut?: Date; workHours?: number }>();
+    logs.forEach((r) => {
+      const key = `${r.userEmail || r.userId}_${r.shiftDate || new Date(r.timestamp).toISOString().slice(0, 10)}`;
+      const existing = shiftPunchMap.get(key) || {};
+      if (r.punchIn) {
+        const pIn = new Date(r.punchIn);
+        if (!existing.punchIn || pIn < existing.punchIn) existing.punchIn = pIn;
+      } else if (r.action === "PUNCH_IN") {
+        const pIn = new Date(r.timestamp);
+        if (!existing.punchIn || pIn < existing.punchIn) existing.punchIn = pIn;
+      }
+      if (r.punchOut) {
+        const pOut = new Date(r.punchOut);
+        if (!existing.punchOut || pOut > existing.punchOut) existing.punchOut = pOut;
+      } else if (r.action === "PUNCH_OUT") {
+        const pOut = new Date(r.timestamp);
+        if (!existing.punchOut || pOut > existing.punchOut) existing.punchOut = pOut;
+      }
+      if (r.workHours && (!existing.workHours || r.workHours > existing.workHours)) {
+        existing.workHours = r.workHours;
+      }
+      shiftPunchMap.set(key, existing);
+    });
+
+    const columns = [
+      { header: "Log ID", key: "id", width: 28 },
+      { header: "Shift Date", key: "shiftDate", width: 14 },
+      { header: "Staff Member", key: "userName", width: 22 },
+      { header: "Email Address", key: "userEmail", width: 26 },
+      { header: "Role", key: "role", width: 16 },
+      { header: "Department", key: "department", width: 22 },
+      { header: "Action", key: "action", width: 16 },
+      { header: "Shift Status", key: "status", width: 18 },
+      { header: "Punch In Time", key: "punchInStr", width: 16 },
+      { header: "Punch Out Time", key: "punchOutStr", width: 16 },
+      { header: "Total Shift Duration", key: "totalTimeStr", width: 20 },
+      { header: "Total Hours (Decimal)", key: "decimalHours", width: 20 },
+      { header: "Shift Remarks", key: "remarks", width: 28 },
+      { header: "Terminal Client", key: "clientType", width: 16 },
+      { header: "Exact Timestamp", key: "timestampStr", width: 22 },
+    ];
+
+    const data = logs.map((log) => {
+      const key = `${log.userEmail || log.userId}_${log.shiftDate || new Date(log.timestamp).toISOString().slice(0, 10)}`;
+      const shiftData = shiftPunchMap.get(key);
+
+      const effectivePunchIn = log.punchIn ? new Date(log.punchIn) : shiftData?.punchIn;
+      const effectivePunchOut = log.punchOut ? new Date(log.punchOut) : shiftData?.punchOut;
+
+      const punchInStr = effectivePunchIn
+        ? effectivePunchIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+        : (log.action === "PUNCH_IN" ? new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "N/A");
+
+      const punchOutStr = effectivePunchOut
+        ? effectivePunchOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+        : (log.action === "PUNCH_OUT" ? new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "N/A");
+
+      let totalTimeStr = "N/A";
+      let decimalHours: number | string = 0.00;
+
+      if (effectivePunchIn && effectivePunchOut) {
+        const diffMs = Math.max(0, effectivePunchOut.getTime() - effectivePunchIn.getTime());
+        const totalMinutes = Math.floor(diffMs / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        totalTimeStr = `${hours}h ${mins}m`;
+        decimalHours = parseFloat((diffMs / 3600000).toFixed(2));
+      } else if (log.workHours != null && Number(log.workHours) > 0) {
+        const totalMinutes = Math.round(Number(log.workHours) * 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        totalTimeStr = `${hours}h ${mins}m`;
+        decimalHours = parseFloat(Number(log.workHours).toFixed(2));
+      } else if (shiftData?.workHours != null && Number(shiftData.workHours) > 0) {
+        const totalMinutes = Math.round(Number(shiftData.workHours) * 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        totalTimeStr = `${hours}h ${mins}m`;
+        decimalHours = parseFloat(Number(shiftData.workHours).toFixed(2));
+      } else if (effectivePunchIn && !effectivePunchOut) {
+        totalTimeStr = "In Progress (On Duty)";
+        decimalHours = 0.00;
+      }
+
+      return {
+        id: log.id,
+        shiftDate: log.shiftDate || new Date(log.timestamp).toISOString().slice(0, 10),
+        userName: log.userName || "",
+        userEmail: log.userEmail || "",
+        role: log.role,
+        department: log.department || "Operations",
+        action: log.action,
+        status: log.status,
+        punchInStr,
+        punchOutStr,
+        totalTimeStr,
+        decimalHours,
+        remarks: log.remarks || "",
+        clientType: log.clientType,
+        timestampStr: new Date(log.timestamp).toLocaleString(),
+      };
+    });
+
+    const dateSuffix = date ? `_${date}` : `_${new Date().toISOString().slice(0, 10)}`;
+    const filename = `WorkMate_Attendance_Report${dateSuffix}.xlsx`;
+
+    await sendStyledExcelStream({
+      res,
+      filename,
+      sheetName: "Attendance_Records",
+      columns,
+      data,
+      theme: "emerald",
+      statusColumnKey: "status",
+    });
   } catch (error) {
     next(error);
   }

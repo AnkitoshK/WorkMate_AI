@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, FormEvent } from "react";
+import { downloadStyledExcel } from "../utils/excelExport";
 
 // --- Types ---
 export type Role = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "ENGINEER" | "USER";
@@ -290,7 +291,7 @@ export default function WorkMateEnterpriseApp() {
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [isNewUserOpen, setIsNewUserOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authTab, setAuthTab] = useState<"login" | "switch" | "register" | "profile">("login");
+  const [authTab, setAuthTab] = useState<"login" | "switch" | "register" | "profile" | "forgot">("login");
   const initialAuthChecked = useRef(false);
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
   const [loginEmail, setLoginEmail] = useState("");
@@ -298,6 +299,15 @@ export default function WorkMateEnterpriseApp() {
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
+  // Basic Self-Service Forgot Password State (Without OTP/Email service)
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotPassword, setForgotPassword] = useState("");
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showForgotConfirmPassword, setShowForgotConfirmPassword] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState("");
+  const [forgotSuccess, setForgotSuccess] = useState("");
   const [isNewServiceOpen, setIsNewServiceOpen] = useState(false);
   const [editingService, setEditingService] = useState<ServiceAsset | null>(null);
   const [newCommentText, setNewCommentText] = useState("");
@@ -817,6 +827,305 @@ export default function WorkMateEnterpriseApp() {
     triggerToast("success", "Closed Tickets Exported", `Downloaded closed tickets history containing ${closed.length} records.`, "CLOSE");
   };
 
+  // Export Attendance Excel Report (.xlsx with colourful formatted headings & calculation columns)
+  const handleExportAttendanceExcel = async () => {
+    const recordsToExport = activeUser?.role === "SUPER_ADMIN"
+      ? attendanceLogs
+      : attendanceLogs.filter(
+        (l) =>
+          l.userId === activeUser?.id ||
+          l.userEmail.toLowerCase() === (activeUser?.email || "").toLowerCase()
+      );
+
+    if (recordsToExport.length === 0) {
+      triggerToast("warning", "No Attendance Records", "There are no attendance records to export for the active view.", "ATTENDANCE");
+      return;
+    }
+
+    const shiftPunchMap = new Map<string, { punchIn?: Date; punchOut?: Date; workHours?: number }>();
+    recordsToExport.forEach((r) => {
+      const key = `${r.userEmail || r.userId}_${r.shiftDate || new Date(r.timestamp).toISOString().slice(0, 10)}`;
+      const existing = shiftPunchMap.get(key) || {};
+      if (r.punchIn) {
+        const pIn = new Date(r.punchIn);
+        if (!existing.punchIn || pIn < existing.punchIn) existing.punchIn = pIn;
+      } else if (r.action === "PUNCH_IN") {
+        const pIn = new Date(r.timestamp);
+        if (!existing.punchIn || pIn < existing.punchIn) existing.punchIn = pIn;
+      }
+      if (r.punchOut) {
+        const pOut = new Date(r.punchOut);
+        if (!existing.punchOut || pOut > existing.punchOut) existing.punchOut = pOut;
+      } else if (r.action === "PUNCH_OUT") {
+        const pOut = new Date(r.timestamp);
+        if (!existing.punchOut || pOut > existing.punchOut) existing.punchOut = pOut;
+      }
+      if (r.workHours && (!existing.workHours || r.workHours > existing.workHours)) {
+        existing.workHours = r.workHours;
+      }
+      shiftPunchMap.set(key, existing);
+    });
+
+    const columns = [
+      { header: "Log ID", key: "id", width: 26 },
+      { header: "Shift Date", key: "shiftDate", width: 14 },
+      { header: "Staff Member", key: "userName", width: 22 },
+      { header: "Work Email", key: "userEmail", width: 26 },
+      { header: "Role", key: "role", width: 16 },
+      { header: "Department", key: "department", width: 22 },
+      { header: "Terminal", key: "clientType", width: 14 },
+      { header: "Action", key: "action", width: 16 },
+      { header: "Shift Status", key: "status", width: 18 },
+      { header: "Punch In Time", key: "punchInStr", width: 16 },
+      { header: "Punch Out Time", key: "punchOutStr", width: 16 },
+      { header: "Total Shift Time", key: "totalTimeStr", width: 18 },
+      { header: "Total Hours (Decimal)", key: "decimalHours", width: 20 },
+      { header: "Shift Remarks", key: "remarks", width: 28 },
+      { header: "Exact Timestamp", key: "timestampStr", width: 22 },
+    ];
+
+    const data = recordsToExport.map((log) => {
+      const key = `${log.userEmail || log.userId}_${log.shiftDate || new Date(log.timestamp).toISOString().slice(0, 10)}`;
+      const shiftData = shiftPunchMap.get(key);
+
+      const effectivePunchIn = log.punchIn ? new Date(log.punchIn) : shiftData?.punchIn;
+      const effectivePunchOut = log.punchOut ? new Date(log.punchOut) : shiftData?.punchOut;
+
+      const punchInStr = effectivePunchIn
+        ? effectivePunchIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+        : (log.action === "PUNCH_IN" ? new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "N/A");
+
+      const punchOutStr = effectivePunchOut
+        ? effectivePunchOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+        : (log.action === "PUNCH_OUT" ? new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "N/A");
+
+      let totalTimeStr = "N/A";
+      let decimalHours: number | string = 0.00;
+
+      if (effectivePunchIn && effectivePunchOut) {
+        const diffMs = Math.max(0, effectivePunchOut.getTime() - effectivePunchIn.getTime());
+        const totalMinutes = Math.floor(diffMs / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        totalTimeStr = `${hours}h ${mins}m`;
+        decimalHours = parseFloat((diffMs / 3600000).toFixed(2));
+      } else if (log.workHours != null && Number(log.workHours) > 0) {
+        const totalMinutes = Math.round(Number(log.workHours) * 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        totalTimeStr = `${hours}h ${mins}m`;
+        decimalHours = parseFloat(Number(log.workHours).toFixed(2));
+      } else if (shiftData?.workHours != null && Number(shiftData.workHours) > 0) {
+        const totalMinutes = Math.round(Number(shiftData.workHours) * 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        totalTimeStr = `${hours}h ${mins}m`;
+        decimalHours = parseFloat(Number(shiftData.workHours).toFixed(2));
+      } else if (effectivePunchIn && !effectivePunchOut) {
+        totalTimeStr = "In Progress (On Duty)";
+        decimalHours = 0.00;
+      }
+
+      return {
+        id: log.id,
+        shiftDate: log.shiftDate || new Date(log.timestamp).toISOString().slice(0, 10),
+        userName: log.userName || "",
+        userEmail: log.userEmail || "",
+        role: log.role,
+        department: log.department || "Operations",
+        clientType: log.clientType,
+        action: log.action,
+        status: log.status,
+        punchInStr,
+        punchOutStr,
+        totalTimeStr,
+        decimalHours,
+        remarks: log.remarks || "",
+        timestampStr: new Date(log.timestamp).toLocaleString(),
+      };
+    });
+
+    const dateSuffix = attendanceDateFilter ? `_${attendanceDateFilter}` : `_${new Date().toISOString().slice(0, 10)}`;
+    const rolePrefix = activeUser?.role === "SUPER_ADMIN" ? "WorkMate_All_Attendance_Report" : `WorkMate_My_Attendance_Report_${activeUser?.name?.replace(/\s+/g, "_")}`;
+
+    await downloadStyledExcel({
+      filename: `${rolePrefix}${dateSuffix}.xlsx`,
+      sheetName: "Attendance_Records",
+      columns,
+      data,
+      theme: "emerald",
+      statusColumnKey: "status",
+    });
+
+    triggerToast("success", "Attendance Excel Exported", `Downloaded formatted Excel (.xlsx) with colorful headings containing ${recordsToExport.length} entries.`, "ATTENDANCE");
+  };
+
+  // Export Closed Tickets Excel Report (.xlsx with colourful formatted headings)
+  const handleExportClosedTicketsExcel = async () => {
+    const closedMap = new Map<number, any>();
+
+    issues.filter((i) => i.status === "CLOSED").forEach((iss) => {
+      closedMap.set(iss.ticketNumber, {
+        ticketNumber: `TIK-${String(iss.ticketNumber).padStart(3, "0")}`,
+        title: iss.title,
+        category: iss.category || "OTHER",
+        priority: iss.priority || "MEDIUM",
+        department: iss.department || "Operations",
+        reporterName: iss.reporter?.name || "Unknown",
+        reporterEmail: iss.reporter?.email || "",
+        assigneeName: iss.assignee?.name || "Unassigned / Lead",
+        createdAt: iss.createdAt ? new Date(iss.createdAt).toLocaleString() : "N/A",
+        closedAt: (iss.closedAt || iss.resolvedAt || iss.updatedAt) ? new Date(iss.closedAt || iss.resolvedAt || iss.updatedAt).toLocaleString() : "N/A",
+        resolutionNotes: iss.resolutionNotes || "Resolved per standard procedure",
+        aiRootCause: iss.aiRootCause || "N/A",
+        serviceAssetName: iss.serviceAsset?.name || "Unlinked",
+      });
+    });
+
+    closedTicketsList.forEach((ct) => {
+      closedMap.set(ct.ticketNumber, {
+        ticketNumber: `TIK-${String(ct.ticketNumber).padStart(3, "0")}`,
+        title: ct.title,
+        category: ct.category || "OTHER",
+        priority: ct.priority || "MEDIUM",
+        department: ct.department || "Operations",
+        reporterName: ct.reporterName || "Unknown",
+        reporterEmail: ct.reporterEmail || "",
+        assigneeName: ct.assigneeName || "Unassigned / Lead",
+        createdAt: ct.createdAt ? new Date(ct.createdAt).toLocaleString() : "N/A",
+        closedAt: ct.closedAt ? new Date(ct.closedAt).toLocaleString() : "N/A",
+        turnaroundDuration: ct.turnaroundDuration,
+        resolutionNotes: ct.resolutionNotes || "Resolved per standard procedure",
+        aiRootCause: ct.aiRootCause || "N/A",
+        serviceAssetName: ct.serviceAssetName || "Unlinked",
+      });
+    });
+
+    const closed = Array.from(closedMap.values());
+    if (closed.length === 0) {
+      triggerToast("warning", "No Closed Tickets", "There are currently no closed tickets to export.", "CLOSE");
+      return;
+    }
+
+    const columns = [
+      { header: "Ticket ID", key: "ticketNumber", width: 16 },
+      { header: "Issue Title", key: "title", width: 34 },
+      { header: "Category", key: "category", width: 16 },
+      { header: "Priority", key: "priority", width: 14 },
+      { header: "Department", key: "department", width: 22 },
+      { header: "Reporter", key: "reporterName", width: 20 },
+      { header: "Reporter Email", key: "reporterEmail", width: 26 },
+      { header: "Resolver / Assignee", key: "assigneeName", width: 22 },
+      { header: "Created At", key: "createdAt", width: 22 },
+      { header: "Closed At", key: "closedAt", width: 22 },
+      { header: "Turnaround Duration", key: "turnaroundDuration", width: 20 },
+      { header: "Resolution Notes", key: "resolutionNotes", width: 34 },
+      { header: "AI Root Cause Diagnosis", key: "aiRootCause", width: 34 },
+      { header: "Affected Asset", key: "serviceAssetName", width: 22 },
+    ];
+
+    await downloadStyledExcel({
+      filename: `WorkMate_Closed_Tickets_History_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      sheetName: "Closed_Tickets_Archive",
+      columns,
+      data: closed,
+      theme: "indigo",
+      statusColumnKey: "priority",
+    });
+
+    triggerToast("success", "Closed Tickets Excel Exported", `Downloaded formatted Excel (.xlsx) with colorful headings containing ${closed.length} records.`, "CLOSE");
+  };
+
+  // Export Active/Filtered Tickets Excel Report (.xlsx with colourful formatted headings)
+  const handleExportTicketsExcel = async () => {
+    if (filteredIssues.length === 0) {
+      triggerToast("warning", "No Tickets", "There are no tickets matching current filters to export.", "GENERAL");
+      return;
+    }
+
+    const columns = [
+      { header: "Ticket ID", key: "ticketNumber", width: 16 },
+      { header: "Title", key: "title", width: 34 },
+      { header: "Status", key: "status", width: 16 },
+      { header: "Priority", key: "priority", width: 14 },
+      { header: "Category", key: "category", width: 16 },
+      { header: "Department", key: "department", width: 22 },
+      { header: "Reporter", key: "reporterName", width: 20 },
+      { header: "Assignee", key: "assigneeName", width: 20 },
+      { header: "Linked Asset", key: "assetName", width: 22 },
+      { header: "Created At", key: "createdAtStr", width: 22 },
+      { header: "Updated At", key: "updatedAtStr", width: 22 },
+    ];
+
+    const data = filteredIssues.map((iss) => ({
+      ticketNumber: `TIK-${String(iss.ticketNumber).padStart(3, "0")}`,
+      title: iss.title,
+      status: iss.status,
+      priority: iss.priority,
+      category: iss.category,
+      department: iss.department || "Operations",
+      reporterName: iss.reporter?.name || "Unknown",
+      assigneeName: iss.assignee?.name || "Unassigned",
+      assetName: iss.serviceAsset?.name || "Unlinked",
+      createdAtStr: iss.createdAt ? new Date(iss.createdAt).toLocaleString() : "N/A",
+      updatedAtStr: iss.updatedAt ? new Date(iss.updatedAt).toLocaleString() : "N/A",
+    }));
+
+    await downloadStyledExcel({
+      filename: `WorkMate_Tickets_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      sheetName: "Active_Tickets",
+      columns,
+      data,
+      theme: "navy",
+      statusColumnKey: "status",
+    });
+
+    triggerToast("success", "Tickets Excel Exported", `Downloaded formatted Excel (.xlsx) with colorful headings containing ${filteredIssues.length} tickets.`, "GENERAL");
+  };
+
+  // Export Field Tasks Excel Report (.xlsx with colourful formatted headings)
+  const handleExportTasksExcel = async () => {
+    if (filteredTasks.length === 0) {
+      triggerToast("warning", "No Tasks", "There are no tasks to export.", "TASK");
+      return;
+    }
+
+    const columns = [
+      { header: "Task ID", key: "id", width: 26 },
+      { header: "Task Title", key: "title", width: 34 },
+      { header: "Status", key: "status", width: 16 },
+      { header: "Priority", key: "priority", width: 14 },
+      { header: "Category", key: "category", width: 16 },
+      { header: "Owner / Assignee", key: "ownerName", width: 22 },
+      { header: "Linked Ticket", key: "linkedTicket", width: 20 },
+      { header: "Due Date", key: "dueDate", width: 18 },
+      { header: "Created At", key: "createdAtStr", width: 22 },
+    ];
+
+    const data = filteredTasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      priority: t.priority !== undefined ? `P${t.priority}` : "P2",
+      category: t.category || "GENERAL",
+      ownerName: t.owner?.name || "Unassigned",
+      linkedTicket: t.issue ? `#TIK-${String(t.issue.ticketNumber).padStart(3, "0")}` : "Unlinked",
+      dueDate: t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "No deadline",
+      createdAtStr: t.createdAt ? new Date(t.createdAt).toLocaleString() : "N/A",
+    }));
+
+    await downloadStyledExcel({
+      filename: `WorkMate_Field_Tasks_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      sheetName: "Field_Tasks",
+      columns,
+      data,
+      theme: "blue",
+      statusColumnKey: "status",
+    });
+
+    triggerToast("success", "Tasks Excel Exported", `Downloaded formatted Excel (.xlsx) with colorful headings containing ${filteredTasks.length} tasks.`, "TASK");
+  };
+
   // Service / Project Selection for Ticket
   const handleSelectServiceForTicket = useCallback((serviceId: string) => {
     if (!serviceId) {
@@ -924,7 +1233,7 @@ export default function WorkMateEnterpriseApp() {
     }
   }, []);
 
-  // Session: Email + Password Login (Production Real-Time Authentication)
+  // Session: Email + Password Login (Instant Execution & Verification)
   const handleEmailLogin = async (e: FormEvent) => {
     e.preventDefault();
     if (!loginEmail.trim()) {
@@ -936,6 +1245,51 @@ export default function WorkMateEnterpriseApp() {
       return;
     }
 
+    const cleanEmail = loginEmail.trim().toLowerCase();
+    const cleanPassword = loginPassword.trim();
+
+    // Check if user already exists in loaded memory state for INSTANT optimistic login
+    const matchedUser = users.find((u) => u.email.toLowerCase() === cleanEmail);
+
+    if (matchedUser) {
+      // INSTANT LOGIN: immediately log in without waiting for server round-trip!
+      handleLoginAs(matchedUser);
+      setIsAuthModalOpen(false);
+      setLoginError("");
+
+      // Background verification to check password & shift cooldown
+      try {
+        const res = await fetch(`${API_BASE}/api/users/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: cleanEmail,
+            password: cleanPassword,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          // Revert session if verification failed
+          handleLogout();
+          setIsAuthModalOpen(true);
+          setLoginError(data.error || "Invalid password. Please check your credentials.");
+          if (res.status === 403) {
+            triggerActionModal("error", "Shift Cooldown Active", data.error);
+          }
+          return;
+        }
+
+        // Successfully verified
+        setLoginEmail("");
+        setLoginPassword("");
+      } catch (err: any) {
+        console.error("Background verification error:", err);
+      }
+      return;
+    }
+
+    // Fallback if not found in memory (e.g. freshly created user)
     try {
       setLoginLoading(true);
       setLoginError("");
@@ -944,8 +1298,8 @@ export default function WorkMateEnterpriseApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: loginEmail.trim(),
-          password: loginPassword.trim(),
+          email: cleanEmail,
+          password: cleanPassword,
         }),
       });
 
@@ -993,6 +1347,100 @@ export default function WorkMateEnterpriseApp() {
     setIsAuthModalOpen(true);
     void fetchAttendanceLogs("", null);
   }, [activeUser, triggerToast, fetchAttendanceLogs]);
+
+  // Session: Instant 1-Click Login as any user or account ID
+  const handleInstantLoginAs = useCallback(
+    async (target: User | SavedAccount) => {
+      const fullUser =
+        users.find((u) => u.id === target.id || u.email.toLowerCase() === target.email.toLowerCase()) ||
+        (target as User);
+
+      // Instantly log in on the UI with 0ms perceived lag
+      handleLoginAs(fullUser);
+      setIsAuthModalOpen(false);
+
+      // Verify and touch session in background
+      try {
+        const res = await fetch(`${API_BASE}/api/users/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: fullUser.email,
+            password: "WorkMate@123",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          if (res.status === 403) {
+            handleLogout();
+            triggerActionModal(
+              "error",
+              "Shift Cooldown Active",
+              data.error || "Shift cooling period active. Please wait before logging back in."
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Background auth touch notice:", err);
+      }
+    },
+    [users, handleLoginAs, handleLogout, triggerActionModal]
+  );
+
+  // Basic Self-Service Password Reset (Without OTP / Email config)
+  const handleForgotPasswordSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) {
+      setForgotError("Please enter your registered work email.");
+      return;
+    }
+    if (!forgotPassword.trim() || forgotPassword.trim().length < 6) {
+      setForgotError("New password must be at least 6 characters.");
+      return;
+    }
+    if (forgotPassword.trim() !== forgotConfirmPassword.trim()) {
+      setForgotError("New password and confirm password do not match.");
+      return;
+    }
+
+    try {
+      setForgotLoading(true);
+      setForgotError("");
+      setForgotSuccess("");
+
+      const res = await fetch(`${API_BASE}/api/users/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: forgotEmail.trim(),
+          newPassword: forgotPassword.trim(),
+          confirmPassword: forgotConfirmPassword.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to reset password.");
+      }
+
+      setForgotSuccess(data.message || "Password successfully reset!");
+      triggerToast("success", "Password Reset", "Your account password has been updated. Logging in now...", "ATTENDANCE");
+
+      if (data.user) {
+        const fullUser = users.find((u) => u.id === data.user.id) || data.user;
+        handleLoginAs(fullUser);
+        setIsAuthModalOpen(false);
+      } else {
+        setAuthTab("login");
+        setLoginEmail(forgotEmail.trim());
+        setLoginPassword(forgotPassword.trim());
+      }
+    } catch (err: any) {
+      setForgotError(err.message || "Failed to reset password.");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
 
   // 1. Initial Data Fetch
   const refreshAllData = useCallback(async () => {
@@ -1192,6 +1640,66 @@ export default function WorkMateEnterpriseApp() {
         `Exported ${data.length} user accounts with password hashes into CSV for SuperAdmin audit.`,
         "GENERAL"
       );
+    } catch (err: any) {
+      alert("Export failed: " + err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Export Users & Passwords to Styled Excel (.xlsx with colourful formatted headings)
+  const handleExportUsersExcel = async () => {
+    if (activeUser?.role !== "SUPER_ADMIN") {
+      alert("🔒 SuperAdmin Authority Required: Only SuperAdmins can download the user credential report.");
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      const res = await fetch(`${API_BASE}/api/users/export-json?requesterRole=SUPER_ADMIN`);
+      if (!res.ok) throw new Error("Failed to fetch user credentials from server");
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        alert("No user records found to export.");
+        return;
+      }
+
+      const columns = [
+        { header: "User ID", key: "id", width: 28 },
+        { header: "Full Name", key: "name", width: 22 },
+        { header: "Email Address", key: "email", width: 28 },
+        { header: "Role", key: "role", width: 16 },
+        { header: "Department", key: "department", width: 24 },
+        { header: "Password / Hash", key: "password", width: 32 },
+        { header: "Duty Shift Status", key: "shiftStatus", width: 18 },
+        { header: "Created At", key: "createdAtStr", width: 22 },
+        { header: "Last Login At", key: "lastLoginAtStr", width: 22 },
+        { header: "Last Logout At", key: "lastLogoutAtStr", width: 22 },
+      ];
+
+      const rows = data.map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        department: u.department || "Operations",
+        password: u.password || "WorkMate@123",
+        shiftStatus: u.shiftStatus || "OFF_DUTY",
+        createdAtStr: u.createdAt ? new Date(u.createdAt).toLocaleString() : "N/A",
+        lastLoginAtStr: u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : "Never",
+        lastLogoutAtStr: u.lastLogoutAt ? new Date(u.lastLogoutAt).toLocaleString() : "Never",
+      }));
+
+      await downloadStyledExcel({
+        filename: `WorkMate_Users_Credentials_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        sheetName: "Team_Credentials",
+        columns,
+        data: rows,
+        theme: "purple",
+        statusColumnKey: "shiftStatus",
+      });
+
+      triggerToast("success", "Team Credentials Exported", `Downloaded formatted Excel (.xlsx) with colorful headings containing ${data.length} staff records.`, "GENERAL");
     } catch (err: any) {
       alert("Export failed: " + err.message);
     } finally {
@@ -2792,6 +3300,25 @@ export default function WorkMateEnterpriseApp() {
                 </button>
               )}
 
+              <button
+                className="btn btn-secondary"
+                style={{
+                  padding: "7px 12px",
+                  fontSize: "12px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "rgba(30, 58, 138, 0.25)",
+                  border: "1px solid rgba(59, 130, 246, 0.4)",
+                  color: "#93c5fd",
+                  fontWeight: "600",
+                }}
+                onClick={handleExportTicketsExcel}
+                title="Export tickets to styled Excel (.xlsx) with colorful formatted headings"
+              >
+                <span>📊</span> Export Excel (.xlsx)
+              </button>
+
               <button className="btn btn-primary" onClick={() => setIsNewTicketOpen(true)}>
                 + New Ticket
               </button>
@@ -3115,6 +3642,26 @@ export default function WorkMateEnterpriseApp() {
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{
+                    padding: "7px 12px",
+                    fontSize: "12px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "rgba(30, 58, 138, 0.25)",
+                    border: "1px solid rgba(59, 130, 246, 0.4)",
+                    color: "#93c5fd",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                  }}
+                  onClick={handleExportClosedTicketsExcel}
+                  title="Export closed tickets to styled Excel (.xlsx) with colorful formatted headings"
+                >
+                  <span>📊</span> Export Excel (.xlsx)
+                </button>
+
                 <button
                   className="export-btn"
                   onClick={handleExportClosedTicketsCsv}
@@ -3493,6 +4040,36 @@ export default function WorkMateEnterpriseApp() {
                     <span>🧹</span> Scrap Logs &gt; 30 Days
                   </button>
                 )}
+
+                <button
+                  className="btn btn-secondary"
+                  style={{
+                    padding: "7px 12px",
+                    fontSize: "12px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "rgba(16, 185, 129, 0.2)",
+                    border: "1px solid rgba(16, 185, 129, 0.4)",
+                    color: "#6ee7b7",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                  }}
+                  onClick={handleExportAttendanceExcel}
+                  title="Export attendance records to styled Excel (.xlsx) with emerald theme and colorful status badges"
+                >
+                  <span>📊</span> Export Excel (.xlsx)
+                </button>
+
+                <a
+                  href={`${API_BASE}/api/attendance/export-excel?${!isSuperAdmin && activeUser ? `userId=${activeUser.id}&` : ""}${attendanceDateFilter ? `date=${attendanceDateFilter}` : ""}`}
+                  download={isSuperAdmin ? `WorkMate_Attendance_Report${attendanceDateFilter ? `_${attendanceDateFilter}` : ""}.xlsx` : `WorkMate_My_Attendance_${activeUser?.name?.replace(/\s+/g, "_")}.xlsx`}
+                  className="btn btn-secondary"
+                  style={{ height: "34px", padding: "0 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none", color: "#6ee7b7" }}
+                  title="Direct server-side Excel (.xlsx) download with emerald theme"
+                >
+                  <span>🌐</span> Server Excel (.xlsx)
+                </a>
 
                 <button
                   className="export-btn"
@@ -4275,6 +4852,34 @@ export default function WorkMateEnterpriseApp() {
                 </div>
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                   <button
+                    className="btn btn-secondary"
+                    style={{
+                      padding: "7px 12px",
+                      fontSize: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: "rgba(147, 51, 234, 0.2)",
+                      border: "1px solid rgba(168, 85, 247, 0.4)",
+                      color: "#c084fc",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                    }}
+                    onClick={handleExportUsersExcel}
+                    title="Export users and credentials to styled Excel (.xlsx) with purple theme"
+                  >
+                    <span>📊</span> Export Excel (.xlsx)
+                  </button>
+                  <a
+                    href={`${API_BASE}/api/users/export-excel?requesterRole=SUPER_ADMIN`}
+                    download={`WorkMate_Users_Credentials_${new Date().toISOString().slice(0, 10)}.xlsx`}
+                    className="btn btn-secondary"
+                    style={{ height: "34px", padding: "0 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none", color: "#c084fc" }}
+                    title="Direct server Excel (.xlsx) download of user credentials with purple theme"
+                  >
+                    <span>🌐</span> Server Excel (.xlsx)
+                  </a>
+                  <button
                     className="export-btn"
                     onClick={handleExportUsersWithPasswords}
                     title="Export all user credentials including password hashes (SuperAdmin only)"
@@ -4395,17 +5000,38 @@ export default function WorkMateEnterpriseApp() {
       {activeTab === "tasks" && (
         <div className="task-section-grid">
           <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
               <h2 style={{ fontSize: "18px", fontWeight: "700" }}>
                 {isSuperAdmin ? "Team Tasks" : `${activeUser?.name || "My"} Tasks`} ({filteredTasks.length})
               </h2>
-              {activeUser?.role !== "USER" ? (
-                <button className="btn btn-primary" onClick={() => setIsNewTaskOpen(true)}>+ Add Task</button>
-              ) : (
-                <span style={{ fontSize: "12px", color: "var(--text-dim)", background: "var(--bg-surface)", padding: "4px 10px", borderRadius: "6px" }}>
-                  Tasks managed by staff
-                </span>
-              )}
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{
+                    padding: "7px 12px",
+                    fontSize: "12px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "rgba(234, 88, 12, 0.2)",
+                    border: "1px solid rgba(249, 115, 22, 0.4)",
+                    color: "#fdba74",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                  }}
+                  onClick={handleExportTasksExcel}
+                  title="Export tasks to styled Excel (.xlsx) with amber theme and colorful status badges"
+                >
+                  <span>📊</span> Export Excel (.xlsx)
+                </button>
+                {activeUser?.role !== "USER" ? (
+                  <button className="btn btn-primary" onClick={() => setIsNewTaskOpen(true)}>+ Add Task</button>
+                ) : (
+                  <span style={{ fontSize: "12px", color: "var(--text-dim)", background: "var(--bg-surface)", padding: "4px 10px", borderRadius: "6px" }}>
+                    Tasks managed by staff
+                  </span>
+                )}
+              </div>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -5628,6 +6254,14 @@ export default function WorkMateEnterpriseApp() {
               >
                 Sign In
               </button>
+              {authTab === "forgot" && (
+                <button
+                  className="auth-tab active"
+                  onClick={() => setAuthTab("forgot")}
+                >
+                  🔑 Reset Password
+                </button>
+              )}
               {activeUser?.role === "SUPER_ADMIN" && (
                 <button
                   className={`auth-tab ${authTab === "switch" ? "active" : ""}`}
@@ -5685,24 +6319,47 @@ export default function WorkMateEnterpriseApp() {
                       <label className="form-label" style={{ fontSize: "13px", fontWeight: "700", marginBottom: 0 }}>
                         Account Password *
                       </label>
-                      <button
-                        type="button"
-                        onClick={() => setShowLoginPassword((prev) => !prev)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: "var(--accent-cyan)",
-                          fontSize: "12px",
-                          fontWeight: "600",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          padding: 0,
-                        }}
-                      >
-                        {showLoginPassword ? "🙈 Hide" : "👁️ Show"}
-                      </button>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForgotEmail(loginEmail || "");
+                            setForgotError("");
+                            setForgotSuccess("");
+                            setAuthTab("forgot");
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "var(--accent-cyan)",
+                            fontSize: "12px",
+                            fontWeight: "600",
+                            cursor: "pointer",
+                            textDecoration: "underline",
+                            padding: 0,
+                          }}
+                        >
+                          Forgot Password?
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowLoginPassword((prev) => !prev)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "var(--text-muted)",
+                            fontSize: "12px",
+                            fontWeight: "600",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: 0,
+                          }}
+                        >
+                          {showLoginPassword ? "🙈 Hide" : "👁️ Show"}
+                        </button>
+                      </div>
                     </div>
                     <div style={{ position: "relative" }}>
                       <input
@@ -5766,15 +6423,13 @@ export default function WorkMateEnterpriseApp() {
                     style={{ width: "100%", height: "44px", fontSize: "14px", fontWeight: "700", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
                     disabled={loginLoading}
                   >
-                    {loginLoading ? "Authenticating with Neon Postgres..." : "Sign In to WorkMate AI →"}
+                    {loginLoading ? "Authenticating..." : "⚡ Sign In to WorkMate AI →"}
                   </button>
                 </form>
 
-                {/* Point 1: Suggested Accounts below the login button */}
+                {/* Point 1: Suggested Accounts with Instant 1-Click Sign In */}
                 {savedAccounts.length > 0 && (() => {
                   const isSuperAdminDevice = activeUser?.role === "SUPER_ADMIN" || savedAccounts.some((a) => a.role === "SUPER_ADMIN");
-                  // For SuperAdmin device: suggest SuperAdmin / saved accounts
-                  // For normal employee device: ONLY suggest his/her own single ID after 1st login
                   const accountsToSuggest = isSuperAdminDevice
                     ? savedAccounts
                     : savedAccounts.slice(0, 1);
@@ -5787,7 +6442,7 @@ export default function WorkMateEnterpriseApp() {
                           {isSuperAdminDevice ? "SuperAdmin Quick Login Suggestions" : "Suggested Login ID (Saved on Device)"}
                         </span>
                         <span style={{ fontSize: "10.5px", color: isSuperAdminDevice ? "#fbbf24" : "var(--accent-cyan)", fontWeight: "600" }}>
-                          {isSuperAdminDevice ? "SuperAdmin Authority" : "1st Login Remembered"}
+                          ⚡ Click ID to Sign In Instantly
                         </span>
                       </div>
 
@@ -5797,10 +6452,7 @@ export default function WorkMateEnterpriseApp() {
                           return (
                             <div
                               key={acc.id}
-                              onClick={() => {
-                                setLoginEmail(acc.email);
-                                setLoginPassword("WorkMate@123");
-                              }}
+                              onClick={() => handleInstantLoginAs(acc)}
                               style={{
                                 display: "flex",
                                 alignItems: "center",
@@ -5812,7 +6464,7 @@ export default function WorkMateEnterpriseApp() {
                                 cursor: "pointer",
                                 transition: "all 0.15s ease",
                               }}
-                              title="Click to auto-fill this account ID"
+                              title="Click to sign in instantly as this user ID"
                             >
                               <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
                                 {acc.avatar ? (
@@ -5846,15 +6498,28 @@ export default function WorkMateEnterpriseApp() {
                               <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
                                 <button
                                   type="button"
+                                  className="btn btn-primary"
+                                  style={{ height: "26px", padding: "0 10px", fontSize: "11px", fontWeight: "700" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleInstantLoginAs(acc);
+                                  }}
+                                  title="Sign In instantly as this user ID"
+                                >
+                                  ⚡ Sign In
+                                </button>
+                                <button
+                                  type="button"
                                   className="btn btn-secondary"
-                                  style={{ height: "24px", padding: "0 8px", fontSize: "11px" }}
+                                  style={{ height: "26px", padding: "0 8px", fontSize: "11px" }}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setLoginEmail(acc.email);
                                     setLoginPassword("WorkMate@123");
                                   }}
+                                  title="Fill login form inputs"
                                 >
-                                  Use ID
+                                  Fill
                                 </button>
                                 <button
                                   type="button"
@@ -5880,6 +6545,62 @@ export default function WorkMateEnterpriseApp() {
                     </div>
                   );
                 })()}
+
+                {/* Instant 1-Click Sign In for Any Registered User ID */}
+                {users.length > 0 && (
+                  <div style={{ marginTop: "16px", padding: "12px 14px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "10px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span style={{ fontSize: "11.5px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>⚡</span> Instant Sign In by User ID
+                      </span>
+                      <span style={{ fontSize: "10.5px", color: "var(--accent-cyan)", fontWeight: "600" }}>
+                        Click Any ID to Sign In Instantly
+                      </span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: "8px", maxHeight: "200px", overflowY: "auto", paddingRight: "4px" }}>
+                      {users.map((u) => (
+                        <div
+                          key={u.id}
+                          onClick={() => handleInstantLoginAs(u)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "7px 10px",
+                            background: "rgba(255, 255, 255, 0.03)",
+                            border: "1px solid rgba(255, 255, 255, 0.08)",
+                            borderRadius: "8px",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                          title={`Click to instantly log in as ${u.name} (${u.role})`}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                            {u.avatar ? (
+                              <img src={u.avatar} alt={u.name} style={{ width: "24px", height: "24px", borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                            ) : (
+                              <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "#4f46e5", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: "bold", flexShrink: 0 }}>
+                                {u.name.charAt(0)}
+                              </div>
+                            )}
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: "12px", fontWeight: "600", color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {u.name}
+                              </div>
+                              <div style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {u.role}
+                              </div>
+                            </div>
+                          </div>
+                          <span style={{ fontSize: "11px", color: "var(--accent-cyan)", fontWeight: "700", flexShrink: 0 }}>
+                            ⚡ Sign In
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Account Provisioning Notice for New Users */}
                 <div style={{
@@ -6327,6 +7048,181 @@ export default function WorkMateEnterpriseApp() {
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* TAB 4: BASIC SELF-SERVICE FORGOT PASSWORD (NO OTP / EMAIL CONFIG) */}
+            {authTab === "forgot" && (
+              <div>
+                <div style={{ marginBottom: "18px" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#fff", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>🔑</span> Reset Account Password
+                  </h3>
+                  <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px", lineHeight: "1.5" }}>
+                    Self-service credential recovery without requiring OTP or email configuration. Enter your registered work email and define your new login password.
+                  </p>
+                </div>
+
+                <form onSubmit={handleForgotPasswordSubmit}>
+                  <div className="form-group" style={{ marginBottom: "14px" }}>
+                    <label className="form-label" style={{ fontSize: "13px", fontWeight: "700" }}>
+                      Registered Work Email *
+                    </label>
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type="email"
+                        className="form-input"
+                        style={{ paddingLeft: "38px", fontSize: "14px", height: "46px" }}
+                        placeholder="Enter your registered work email"
+                        value={forgotEmail}
+                        onChange={(e) => {
+                          setForgotEmail(e.target.value);
+                          if (forgotError) setForgotError("");
+                        }}
+                        required
+                        autoFocus
+                      />
+                      <span style={{ position: "absolute", left: "13px", top: "13px", fontSize: "17px" }}>✉️</span>
+                    </div>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: "14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                      <label className="form-label" style={{ fontSize: "13px", fontWeight: "700", marginBottom: 0 }}>
+                        New Account Password *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotPassword((p) => !p)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "var(--accent-cyan)",
+                          fontSize: "12px",
+                          fontWeight: "600",
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        {showForgotPassword ? "🙈 Hide" : "👁️ Show"}
+                      </button>
+                    </div>
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type={showForgotPassword ? "text" : "password"}
+                        className="form-input"
+                        style={{ paddingLeft: "38px", paddingRight: "38px", fontSize: "14px", height: "46px" }}
+                        placeholder="Enter new password (min. 6 characters)"
+                        value={forgotPassword}
+                        onChange={(e) => {
+                          setForgotPassword(e.target.value);
+                          if (forgotError) setForgotError("");
+                        }}
+                        required
+                        minLength={6}
+                      />
+                      <span style={{ position: "absolute", left: "13px", top: "13px", fontSize: "17px" }}>🔒</span>
+                    </div>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: "18px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                      <label className="form-label" style={{ fontSize: "13px", fontWeight: "700", marginBottom: 0 }}>
+                        Confirm New Password *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotConfirmPassword((p) => !p)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "var(--accent-cyan)",
+                          fontSize: "12px",
+                          fontWeight: "600",
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        {showForgotConfirmPassword ? "🙈 Hide" : "👁️ Show"}
+                      </button>
+                    </div>
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type={showForgotConfirmPassword ? "text" : "password"}
+                        className="form-input"
+                        style={{ paddingLeft: "38px", paddingRight: "38px", fontSize: "14px", height: "46px" }}
+                        placeholder="Re-enter your new password"
+                        value={forgotConfirmPassword}
+                        onChange={(e) => {
+                          setForgotConfirmPassword(e.target.value);
+                          if (forgotError) setForgotError("");
+                        }}
+                        required
+                        minLength={6}
+                      />
+                      <span style={{ position: "absolute", left: "13px", top: "13px", fontSize: "17px" }}>🔐</span>
+                    </div>
+                  </div>
+
+                  {forgotError && (
+                    <div style={{
+                      background: "rgba(244, 63, 94, 0.12)",
+                      border: "1px solid rgba(244, 63, 94, 0.35)",
+                      borderRadius: "10px",
+                      padding: "10px 14px",
+                      color: "#fb7185",
+                      fontSize: "12.5px",
+                      marginBottom: "16px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}>
+                      <span>⚠️</span>
+                      <span>{forgotError}</span>
+                    </div>
+                  )}
+
+                  {forgotSuccess && (
+                    <div style={{
+                      background: "rgba(34, 197, 94, 0.12)",
+                      border: "1px solid rgba(34, 197, 94, 0.35)",
+                      borderRadius: "10px",
+                      padding: "10px 14px",
+                      color: "#4ade80",
+                      fontSize: "12.5px",
+                      marginBottom: "16px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}>
+                      <span>✓</span>
+                      <span>{forgotSuccess}</span>
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ flex: 1, height: "44px", fontSize: "13px" }}
+                      onClick={() => {
+                        setAuthTab("login");
+                        setForgotError("");
+                        setForgotSuccess("");
+                      }}
+                    >
+                      ← Back to Sign In
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      style={{ flex: 2, height: "44px", fontSize: "13px", fontWeight: "700" }}
+                      disabled={forgotLoading}
+                    >
+                      {forgotLoading ? "Resetting Password..." : "⚡ Reset & Sign In Instantly"}
+                    </button>
+                  </div>
+                </form>
+              </div>
             )}
           </div>
         </div>
