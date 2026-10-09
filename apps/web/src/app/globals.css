@@ -1534,6 +1534,12 @@ button {
   border: 2px solid rgba(37, 99, 235, 0.4);
 }
 
+.action-modal-icon-badge.kind-cooldown {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 2px solid rgba(245, 158, 11, 0.4);
+}
+
 .action-modal-title {
   font-size: 20px;
   font-weight: 800;

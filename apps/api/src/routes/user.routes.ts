@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { sendStyledExcelStream } from "../utils/excelExport.js";
+import { formatTimeInTimezone } from "../utils/timezone.js";
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -139,11 +140,17 @@ router.post("/login", async (req, res, next) => {
         const remainingMs = cooldownMs - elapsedMs;
         const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
         const remainingMinutes = Math.ceil((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
-        const allowAt = new Date(Date.now() + remainingMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const clientTimezone = (req.headers["x-timezone"] || req.query.timeZone || req.body?.timeZone) as string | undefined;
+        const targetDate = new Date(Date.now() + remainingMs);
+        const allowAt = formatTimeInTimezone(targetDate, clientTimezone);
         return res.status(403).json({
-          error: `Shift cooldown active: You logged out of your shift. Per 1-hour cooling period rules, you can log in again at ${allowAt} (remaining: ${remainingHours > 0 ? `${remainingHours}h ` : ""}${remainingMinutes}m).`,
+          error: `Shift cooldown active: You logged out of your shift. Per 1-hour cooling period rules, at ${allowAt} you are able to login and punch in attendance again (remaining: ${remainingHours > 0 ? `${remainingHours}h ` : ""}${remainingMinutes}m).`,
           cooldownRemainingMs: remainingMs,
           canLoginAt: allowAt,
+          canPunchAt: allowAt,
+          canLoginAtIso: targetDate.toISOString(),
+          userId: user.id,
+          userName: user.name,
         });
       }
     }

@@ -192,9 +192,10 @@ export interface ActionModalAlert {
   type: "success" | "info" | "warning" | "error";
   title: string;
   message: string;
-  actionKind: "RAISE" | "CLOSE" | "RESOLVE" | "REASSIGN" | "USER" | "TASK" | "SERVICE" | "GENERAL";
+  actionKind: "RAISE" | "CLOSE" | "RESOLVE" | "REASSIGN" | "USER" | "TASK" | "SERVICE" | "COOLDOWN" | "GENERAL";
   ticketNumber?: number;
   details?: Array<{ label: string; value: string }>;
+  targetUserId?: string;
 }
 
 export interface AiDetailedExplanation {
@@ -421,9 +422,10 @@ export default function WorkMateEnterpriseApp() {
       type: "success" | "info" | "warning" | "error",
       title: string,
       message: string,
-      actionKind: "RAISE" | "CLOSE" | "RESOLVE" | "REASSIGN" | "USER" | "TASK" | "SERVICE" | "GENERAL" = "GENERAL",
+      actionKind: "RAISE" | "CLOSE" | "RESOLVE" | "REASSIGN" | "USER" | "TASK" | "SERVICE" | "COOLDOWN" | "GENERAL" = "GENERAL",
       ticketNumber?: number,
-      details?: Array<{ label: string; value: string }>
+      details?: Array<{ label: string; value: string }>,
+      targetUserId?: string
     ) => {
       setActionModal({
         isOpen: true,
@@ -433,6 +435,7 @@ export default function WorkMateEnterpriseApp() {
         actionKind,
         ticketNumber,
         details,
+        targetUserId,
       });
     },
     []
@@ -478,7 +481,10 @@ export default function WorkMateEnterpriseApp() {
       setPunchLoading(true);
       const res = await fetch(`${API_BASE}/api/attendance/punch`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-timezone": typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "Asia/Kolkata",
+        },
         body: JSON.stringify({
           userId: activeUser.id,
           action,
@@ -494,6 +500,29 @@ export default function WorkMateEnterpriseApp() {
           setRemarksModalNotice(data.error || "Shift attendance already marked for today. Please provide remarks to record an additional session.");
           setRemarksInput("");
           setRemarksModalOpen(true);
+          return;
+        }
+        if (res.status === 403 && (data.cooldownRemainingMs !== undefined || data.canPunchAt || data.canPunchAtIso)) {
+          const remainingMs = data.cooldownRemainingMs ?? 0;
+          const targetTime = data.canPunchAtIso ? new Date(data.canPunchAtIso) : new Date(Date.now() + remainingMs);
+          const localAllowAt = targetTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+          const remainingMins = Math.max(1, Math.ceil(remainingMs / (1000 * 60)));
+          const cooldownMessage = `Shift cooldown active: You logged out of your shift. Per 1-hour cooling period rules, at ${localAllowAt} you are able to login and punch in attendance again (remaining: ${remainingMins}m).`;
+          triggerActionModal(
+            "info",
+            "Shift Cooldown Active",
+            cooldownMessage,
+            "COOLDOWN",
+            undefined,
+            [
+              { label: "Cooldown Policy", value: "60 Minutes (1 Hour)" },
+              { label: "Eligible Punch Time", value: localAllowAt },
+              { label: "Time Remaining", value: `${remainingMins} minute(s)` },
+              { label: "Employee Name", value: activeUser.name },
+            ],
+            data.userId || activeUser.id
+          );
+          triggerToast("warning", "Punch-In Cooldown Active", cooldownMessage, "ATTENDANCE");
           return;
         }
         triggerToast("warning", action === "PUNCH_IN" ? "Punch-In Notice" : "Punch-Out Notice", data.error || "Shift punch rejected.", "ATTENDANCE");
@@ -1261,7 +1290,10 @@ export default function WorkMateEnterpriseApp() {
       try {
         const res = await fetch(`${API_BASE}/api/users/login`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-timezone": typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "Asia/Kolkata",
+          },
           body: JSON.stringify({
             email: cleanEmail,
             password: cleanPassword,
@@ -1275,7 +1307,25 @@ export default function WorkMateEnterpriseApp() {
           setIsAuthModalOpen(true);
           setLoginError(data.error || "Invalid password. Please check your credentials.");
           if (res.status === 403) {
-            triggerActionModal("error", "Shift Cooldown Active", data.error);
+            const remainingMs = data.cooldownRemainingMs ?? 0;
+            const targetTime = data.canLoginAtIso ? new Date(data.canLoginAtIso) : new Date(Date.now() + remainingMs);
+            const localAllowAt = targetTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+            const remainingMins = Math.max(1, Math.ceil(remainingMs / (1000 * 60)));
+            const cooldownMessage = `Shift cooldown active: You logged out of your shift. Per 1-hour cooling period rules, at ${localAllowAt} you are able to login and punch in attendance again (remaining: ${remainingMins}m).`;
+            triggerActionModal(
+              "info",
+              "Shift Cooldown Active",
+              cooldownMessage,
+              "COOLDOWN",
+              undefined,
+              [
+                { label: "Cooldown Policy", value: "60 Minutes (1 Hour)" },
+                { label: "Eligible Re-entry Time", value: localAllowAt },
+                { label: "Time Remaining", value: `${remainingMins} minute(s)` },
+                { label: "User Account", value: cleanEmail },
+              ],
+              data.userId || matchedUser.id
+            );
           }
           return;
         }
@@ -1296,7 +1346,10 @@ export default function WorkMateEnterpriseApp() {
 
       const res = await fetch(`${API_BASE}/api/users/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-timezone": typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "Asia/Kolkata",
+        },
         body: JSON.stringify({
           email: cleanEmail,
           password: cleanPassword,
@@ -1305,6 +1358,27 @@ export default function WorkMateEnterpriseApp() {
 
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 403) {
+          const remainingMs = data.cooldownRemainingMs ?? 0;
+          const targetTime = data.canLoginAtIso ? new Date(data.canLoginAtIso) : new Date(Date.now() + remainingMs);
+          const localAllowAt = targetTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+          const remainingMins = Math.max(1, Math.ceil(remainingMs / (1000 * 60)));
+          const cooldownMessage = `Shift cooldown active: You logged out of your shift. Per 1-hour cooling period rules, at ${localAllowAt} you are able to login and punch in attendance again (remaining: ${remainingMins}m).`;
+          triggerActionModal(
+            "info",
+            "Shift Cooldown Active",
+            cooldownMessage,
+            "COOLDOWN",
+            undefined,
+            [
+              { label: "Cooldown Policy", value: "60 Minutes (1 Hour)" },
+              { label: "Eligible Re-entry Time", value: localAllowAt },
+              { label: "Time Remaining", value: `${remainingMins} minute(s)` },
+              { label: "User Account", value: cleanEmail },
+            ],
+            data.userId
+          );
+        }
         throw new Error(data.error || "Login failed. Please verify your email and password.");
       }
 
@@ -1363,7 +1437,10 @@ export default function WorkMateEnterpriseApp() {
       try {
         const res = await fetch(`${API_BASE}/api/users/login`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-timezone": typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "Asia/Kolkata",
+          },
           body: JSON.stringify({
             email: fullUser.email,
             password: "WorkMate@123",
@@ -1373,10 +1450,24 @@ export default function WorkMateEnterpriseApp() {
         if (!res.ok) {
           if (res.status === 403) {
             handleLogout();
+            const remainingMs = data.cooldownRemainingMs ?? 0;
+            const targetTime = data.canLoginAtIso ? new Date(data.canLoginAtIso) : new Date(Date.now() + remainingMs);
+            const localAllowAt = targetTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+            const remainingMins = Math.max(1, Math.ceil(remainingMs / (1000 * 60)));
+            const cooldownMessage = `Shift cooldown active: You logged out of your shift. Per 1-hour cooling period rules, at ${localAllowAt} you are able to login and punch in attendance again (remaining: ${remainingMins}m).`;
             triggerActionModal(
-              "error",
+              "info",
               "Shift Cooldown Active",
-              data.error || "Shift cooling period active. Please wait before logging back in."
+              cooldownMessage,
+              "COOLDOWN",
+              undefined,
+              [
+                { label: "Cooldown Policy", value: "60 Minutes (1 Hour)" },
+                { label: "Eligible Re-entry Time", value: localAllowAt },
+                { label: "Time Remaining", value: `${remainingMins} minute(s)` },
+                { label: "User Name", value: fullUser.name },
+              ],
+              data.userId || fullUser.id
             );
           }
         }
@@ -7473,6 +7564,7 @@ export default function WorkMateEnterpriseApp() {
               {actionModal.actionKind === "USER" && "👤"}
               {actionModal.actionKind === "TASK" && "📋"}
               {actionModal.actionKind === "SERVICE" && "🌐"}
+              {actionModal.actionKind === "COOLDOWN" && "⏳"}
               {actionModal.actionKind === "GENERAL" && (actionModal.type === "success" ? "✓" : "ℹ️")}
             </div>
 
@@ -7511,6 +7603,30 @@ export default function WorkMateEnterpriseApp() {
                   }}
                 >
                   View Ticket Queue ➔
+                </button>
+              )}
+              {actionModal.actionKind === "COOLDOWN" && actionModal.targetUserId && (
+                <button
+                  className="btn btn-secondary"
+                  style={{ borderColor: "#38bdf8", color: "#38bdf8", background: "rgba(56, 189, 248, 0.1)" }}
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`${API_BASE}/api/users/reset-cooldown`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ userId: actionModal.targetUserId }),
+                      });
+                      if (res.ok) {
+                        setActionModal((prev) => ({ ...prev, isOpen: false }));
+                        triggerToast("success", "Shift Cooldown Cleared", "Shift cooling period cleared. You can now log in and punch in again.", "ATTENDANCE");
+                        await refreshAllData();
+                      }
+                    } catch (err: any) {
+                      triggerToast("error", "Reset Error", err.message || "Failed to reset cooldown", "ATTENDANCE");
+                    }
+                  }}
+                >
+                  ⚡ Clear Cooldown & Unlock Now
                 </button>
               )}
               <button
