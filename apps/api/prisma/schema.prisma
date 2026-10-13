@@ -60,6 +60,9 @@ model User {
   lastLogoutAt   DateTime?
   lastPunchIn    DateTime?
   lastPunchOut   DateTime?
+  lastLatitude   Float?
+  lastLongitude  Float?
+  lastLocation   String?
   shiftStatus    String?   @default("OFF_DUTY")
   tasks          Task[]
   reportedIssues Issue[]   @relation("ReportedIssues")
@@ -173,6 +176,9 @@ model AttendanceLog {
   punchOut    DateTime? // Punch Out timestamp
   workHours   Float?    // Total logged hours in decimal
   remarks     String?   // e.g. "Shift 9:00 AM - 5:30 PM (On Time Buffer)"
+  latitude    Float?    // Precise GPS Latitude
+  longitude   Float?    // Precise GPS Longitude
+  location    String?   // Nearby address or geocoded locality
   ipAddress   String?
   userAgent   String?
   timestamp   DateTime  @default(now())

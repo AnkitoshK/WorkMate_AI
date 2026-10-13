@@ -32,7 +32,7 @@ const updateUserSchema = z.object({
 
 // POST /api/users/login (Authenticate user by email & password with instant execution)
 router.post("/login", async (req, res, next) => {
-  const { email, password } = req.body;
+  const { email, password, latitude, longitude, location } = req.body;
   if (!email || typeof email !== "string" || !email.trim()) {
     return res.status(400).json({ error: "Please enter your work email address" });
   }
@@ -59,6 +59,9 @@ router.post("/login", async (req, res, next) => {
         lastLogoutAt: true,
         lastPunchIn: true,
         lastPunchOut: true,
+        lastLatitude: true,
+        lastLongitude: true,
+        lastLocation: true,
         shiftStatus: true,
         _count: {
           select: {
@@ -90,6 +93,9 @@ router.post("/login", async (req, res, next) => {
           lastLogoutAt: true,
           lastPunchIn: true,
           lastPunchOut: true,
+          lastLatitude: true,
+          lastLongitude: true,
+          lastLocation: true,
           shiftStatus: true,
           _count: {
             select: {
@@ -154,10 +160,15 @@ router.post("/login", async (req, res, next) => {
       }
     }
 
-    // Record login timestamp asynchronously in background (don't block the instant HTTP response)
+    // Record login timestamp & precise GPS location asynchronously in background (don't block the instant HTTP response)
+    const loginUpdateData: any = { lastLoginAt: new Date() };
+    if (typeof latitude === "number" && !isNaN(latitude)) loginUpdateData.lastLatitude = latitude;
+    if (typeof longitude === "number" && !isNaN(longitude)) loginUpdateData.lastLongitude = longitude;
+    if (typeof location === "string" && location.trim()) loginUpdateData.lastLocation = location.trim();
+
     prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+      data: loginUpdateData,
     }).catch((err) => console.error("Async login touch:", err));
 
     const { password: _, ...userWithoutPassword } = user;
@@ -474,6 +485,9 @@ router.get("/", async (_req, res, next) => {
         lastLogoutAt: true,
         lastPunchIn: true,
         lastPunchOut: true,
+        lastLatitude: true,
+        lastLongitude: true,
+        lastLocation: true,
         _count: {
           select: {
             assignedIssues: true,

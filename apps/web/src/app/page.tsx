@@ -32,6 +32,9 @@ export interface User {
   lastLogoutAt?: string | null;
   lastPunchIn?: string | null;
   lastPunchOut?: string | null;
+  lastLatitude?: number | null;
+  lastLongitude?: number | null;
+  lastLocation?: string | null;
   _count?: { assignedIssues?: number; tasks?: number };
 }
 
@@ -225,9 +228,105 @@ export interface AttendanceRecord {
   punchOut?: string | null;
   workHours?: number | null;
   remarks?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  location?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;
   timestamp: string;
+}
+
+interface GeoLocationResult {
+  latitude: number | null;
+  longitude: number | null;
+  location: string | null;
+}
+
+// Client-side helper to acquire GPS coordinates and resolve nearby address with safety timeouts
+async function getClientGeolocation(): Promise<GeoLocationResult> {
+  if (typeof window === "undefined" || !navigator?.geolocation) {
+    return { latitude: null, longitude: null, location: null };
+  }
+
+  // 1. Acquire raw lat/lng with 2.5s maximum wait so UI is never blocked or delayed
+  const posPromise = new Promise<{ lat: number; lng: number } | null>((resolve) => {
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          resolve({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          });
+        },
+        () => {
+          resolve(null);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 2500,
+          maximumAge: 60000,
+        }
+      );
+    } catch {
+      resolve(null);
+    }
+  });
+
+  const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+  const coords = await Promise.race([posPromise, timeoutPromise]);
+
+  if (!coords) {
+    return { latitude: null, longitude: null, location: null };
+  }
+
+  const { lat, lng } = coords;
+
+  // 2. Reverse geocode to nearby address using OpenStreetMap Nominatim with 1.8s timeout
+  try {
+    const geoController = new AbortController();
+    const geoTimeout = setTimeout(() => geoController.abort(), 1800);
+
+    const geoRes = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+      {
+        headers: { "Accept-Language": "en" },
+        signal: geoController.signal,
+      }
+    );
+    clearTimeout(geoTimeout);
+
+    if (geoRes.ok) {
+      const data = await geoRes.json();
+      const addr = data.address || {};
+      const parts: string[] = [];
+      const place = addr.suburb || addr.neighbourhood || addr.road || addr.quarter || addr.commercial || addr.village;
+      const city = addr.city || addr.town || addr.city_district || addr.county;
+      const state = addr.state;
+      const country = addr.country;
+
+      if (place) parts.push(place);
+      if (city && city !== place) parts.push(city);
+      if (state && !parts.includes(state)) parts.push(state);
+      if (country && !parts.includes(country)) parts.push(country);
+
+      const resolvedAddress = parts.length > 0 ? parts.join(", ") : (data.display_name?.split(",").slice(0, 3).join(", ") || null);
+      if (resolvedAddress) {
+        return {
+          latitude: lat,
+          longitude: lng,
+          location: resolvedAddress,
+        };
+      }
+    }
+  } catch {
+    // Reverse geocode failed or timed out; fallback to formatted coordinates
+  }
+
+  return {
+    latitude: lat,
+    longitude: lng,
+    location: `Lat: ${lat.toFixed(4)}, Lon: ${lng.toFixed(4)} (GPS Verified)`,
+  };
 }
 
 function computeClientShiftSummary(issuesList: Issue[], tasksList: Task[]): ShiftSummary {
@@ -297,9 +396,9 @@ const QUICK_COPILOT_PRELOADS: Record<string, AiDetailedExplanation> = {
 Developer   : ANKITOSH KUMAR
 Role        : Full-Stack Software Engineer
 Highest Deg : Master of Computer Applications (MCA)
-Portfolio   : https://animation-portfolio-one.vercel.app/
-GitHub      : https://github.com/AnkitoshK
-LinkedIn    : https://www.linkedin.com/in/ankitosh-kumar-7682a91b6/
+Portfolio   : https://animation-portfolio-one.vercel.app/ ,
+GitHub      : https://github.com/AnkitoshK ,
+LinkedIn    : https://www.linkedin.com/in/ankitosh-kumar-7682a91b6/ ,
 Status      : Active & Open for High-Impact Software Engineering Roles`,
     proTipsAndBestPractices: [
       "Visit https://animation-portfolio-one.vercel.app/ to explore Ankitosh's interactive animations, skills matrix, and live projects.",
@@ -495,7 +594,7 @@ export default function WorkMateEnterpriseApp() {
       try {
         const c = sessionStorage.getItem("wm_cache_users");
         if (c) return JSON.parse(c);
-      } catch {}
+      } catch { }
     }
     return [];
   });
@@ -504,7 +603,7 @@ export default function WorkMateEnterpriseApp() {
       try {
         const c = localStorage.getItem("workmate_active_user_cache");
         if (c) return JSON.parse(c);
-      } catch {}
+      } catch { }
     }
     return null;
   });
@@ -513,7 +612,7 @@ export default function WorkMateEnterpriseApp() {
       try {
         const c = sessionStorage.getItem("wm_cache_services");
         if (c) return JSON.parse(c);
-      } catch {}
+      } catch { }
     }
     return [];
   });
@@ -522,7 +621,7 @@ export default function WorkMateEnterpriseApp() {
       try {
         const c = sessionStorage.getItem("wm_cache_issues");
         if (c) return JSON.parse(c);
-      } catch {}
+      } catch { }
     }
     return [];
   });
@@ -531,7 +630,7 @@ export default function WorkMateEnterpriseApp() {
       try {
         const c = sessionStorage.getItem("wm_cache_tasks");
         if (c) return JSON.parse(c);
-      } catch {}
+      } catch { }
     }
     return [];
   });
@@ -540,7 +639,7 @@ export default function WorkMateEnterpriseApp() {
       try {
         const c = sessionStorage.getItem("wm_cache_stats");
         if (c) return JSON.parse(c);
-      } catch {}
+      } catch { }
     }
     return null;
   });
@@ -549,7 +648,7 @@ export default function WorkMateEnterpriseApp() {
       try {
         const c = sessionStorage.getItem("wm_cache_shift_summary");
         if (c) return JSON.parse(c);
-      } catch {}
+      } catch { }
     }
     return null;
   });
@@ -760,6 +859,10 @@ export default function WorkMateEnterpriseApp() {
 
     try {
       setPunchLoading(true);
+
+      // Acquire precise GPS coordinates & nearby address
+      const geo = await getClientGeolocation();
+
       const res = await fetch(`${API_BASE}/api/attendance/punch`, {
         method: "POST",
         headers: {
@@ -771,6 +874,9 @@ export default function WorkMateEnterpriseApp() {
           action,
           clientType: "WEB_PORTAL",
           remarks: customRemarks && customRemarks.trim() ? customRemarks.trim() : undefined,
+          latitude: geo.latitude ?? undefined,
+          longitude: geo.longitude ?? undefined,
+          location: geo.location ?? undefined,
         }),
       });
 
@@ -810,7 +916,7 @@ export default function WorkMateEnterpriseApp() {
         return;
       }
 
-      // 1. Optimistically update local activeUser shift status
+      // 1. Optimistically update local activeUser shift status & location
       const updatedStatus = action === "PUNCH_IN" ? "ON_DUTY" : "OFF_DUTY";
       setActiveUser((prev) => {
         if (!prev) return null;
@@ -819,10 +925,11 @@ export default function WorkMateEnterpriseApp() {
           shiftStatus: updatedStatus,
           lastPunchIn: action === "PUNCH_IN" ? new Date().toISOString() : prev.lastPunchIn,
           lastPunchOut: action === "PUNCH_OUT" ? new Date().toISOString() : prev.lastPunchOut,
+          ...(geo.latitude != null ? { lastLatitude: geo.latitude, lastLongitude: geo.longitude, lastLocation: geo.location } : {}),
         };
         try {
           localStorage.setItem("workmate_active_user_cache", JSON.stringify(updated));
-        } catch {}
+        } catch { }
         return updated;
       });
 
@@ -1021,6 +1128,11 @@ export default function WorkMateEnterpriseApp() {
       "Punch Out Time",
       "Total Time (Punch In - Punch Out)",
       "Total Hours (Decimal Calculation)",
+      "Latitude",
+      "Longitude",
+      "GPS Coordinates",
+      "Punch Location / Nearby Address",
+      "Google Maps Link",
       "Shift Remarks",
       "Timestamp",
     ];
@@ -1067,6 +1179,12 @@ export default function WorkMateEnterpriseApp() {
         decimalHours = "0.00";
       }
 
+      const latStr = log.latitude != null ? log.latitude.toFixed(6) : "N/A";
+      const lngStr = log.longitude != null ? log.longitude.toFixed(6) : "N/A";
+      const coordsStr = log.latitude != null && log.longitude != null ? `${log.latitude.toFixed(6)}, ${log.longitude.toFixed(6)}` : "N/A";
+      const locationStr = log.location ? log.location : "N/A";
+      const mapsLink = log.latitude != null && log.longitude != null ? `https://www.google.com/maps?q=${log.latitude},${log.longitude}` : "N/A";
+
       return [
         `"${log.id}"`,
         `"${log.shiftDate || new Date(log.timestamp).toISOString().slice(0, 10)}"`,
@@ -1081,6 +1199,11 @@ export default function WorkMateEnterpriseApp() {
         `"${punchOutStr}"`,
         `"${totalTimeStr}"`,
         `${decimalHours}`,
+        `"${latStr}"`,
+        `"${lngStr}"`,
+        `"${coordsStr}"`,
+        `"${locationStr.replace(/"/g, '""')}"`,
+        `"${mapsLink}"`,
         `"${(log.remarks || "").replace(/"/g, '""')}"`,
         `"${new Date(log.timestamp).toLocaleString()}"`,
       ].join(",");
@@ -1261,6 +1384,11 @@ export default function WorkMateEnterpriseApp() {
       { header: "Punch Out Time", key: "punchOutStr", width: 16 },
       { header: "Total Shift Time", key: "totalTimeStr", width: 18 },
       { header: "Total Hours (Decimal)", key: "decimalHours", width: 20 },
+      { header: "Latitude", key: "latitude", width: 16 },
+      { header: "Longitude", key: "longitude", width: 16 },
+      { header: "GPS Coordinates", key: "gpsCoordinates", width: 24 },
+      { header: "Punch Location / Nearby Address", key: "location", width: 36 },
+      { header: "Google Maps Link", key: "mapsLink", width: 38 },
       { header: "Shift Remarks", key: "remarks", width: 28 },
       { header: "Exact Timestamp", key: "timestampStr", width: 22 },
     ];
@@ -1307,6 +1435,9 @@ export default function WorkMateEnterpriseApp() {
         decimalHours = 0.00;
       }
 
+      const coordsStr = log.latitude != null && log.longitude != null ? `${log.latitude.toFixed(6)}, ${log.longitude.toFixed(6)}` : "N/A";
+      const mapsLink = log.latitude != null && log.longitude != null ? `https://www.google.com/maps?q=${log.latitude},${log.longitude}` : "N/A";
+
       return {
         id: log.id,
         shiftDate: log.shiftDate || new Date(log.timestamp).toISOString().slice(0, 10),
@@ -1321,6 +1452,11 @@ export default function WorkMateEnterpriseApp() {
         punchOutStr,
         totalTimeStr,
         decimalHours,
+        latitude: log.latitude != null ? log.latitude.toFixed(6) : "N/A",
+        longitude: log.longitude != null ? log.longitude.toFixed(6) : "N/A",
+        gpsCoordinates: coordsStr,
+        location: log.location || "N/A",
+        mapsLink,
         remarks: log.remarks || "",
         timestampStr: new Date(log.timestamp).toLocaleString(),
       };
@@ -1639,56 +1775,62 @@ export default function WorkMateEnterpriseApp() {
       setIsAuthModalOpen(false);
       setLoginError("");
 
-      // Background verification to check password & shift cooldown
-      try {
-        const res = await fetch(`${API_BASE}/api/users/login`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-timezone": typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "Asia/Kolkata",
-          },
-          body: JSON.stringify({
-            email: cleanEmail,
-            password: cleanPassword,
-          }),
-        });
+      // Background verification to check password, shift cooldown & record user login location
+      (async () => {
+        try {
+          const geo = await getClientGeolocation();
+          const res = await fetch(`${API_BASE}/api/users/login`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-timezone": typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "Asia/Kolkata",
+            },
+            body: JSON.stringify({
+              email: cleanEmail,
+              password: cleanPassword,
+              latitude: geo.latitude ?? undefined,
+              longitude: geo.longitude ?? undefined,
+              location: geo.location ?? undefined,
+            }),
+          });
 
-        const data = await res.json();
-        if (!res.ok) {
-          // Revert session if verification failed
-          handleLogout();
-          setIsAuthModalOpen(true);
-          setLoginError(data.error || "Invalid password. Please check your credentials.");
-          if (res.status === 403) {
-            const remainingMs = data.cooldownRemainingMs ?? 0;
-            const targetTime = data.canLoginAtIso ? new Date(data.canLoginAtIso) : new Date(Date.now() + remainingMs);
-            const localAllowAt = targetTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
-            const remainingMins = Math.max(1, Math.ceil(remainingMs / (1000 * 60)));
-            const cooldownMessage = `Shift cooldown active: You logged out of your shift. Per 1-hour cooling period rules, at ${localAllowAt} you are able to login and punch in attendance again (remaining: ${remainingMins}m).`;
-            triggerActionModal(
-              "info",
-              "Shift Cooldown Active",
-              cooldownMessage,
-              "COOLDOWN",
-              undefined,
-              [
-                { label: "Cooldown Policy", value: "60 Minutes (1 Hour)" },
-                { label: "Eligible Re-entry Time", value: localAllowAt },
-                { label: "Time Remaining", value: `${remainingMins} minute(s)` },
-                { label: "User Account", value: cleanEmail },
-              ],
-              data.userId || matchedUser.id
-            );
+          const data = await res.json();
+          if (!res.ok) {
+            // Revert session if verification failed
+            handleLogout();
+            setIsAuthModalOpen(true);
+            setLoginError(data.error || "Invalid password. Please check your credentials.");
+            if (res.status === 403) {
+              const remainingMs = data.cooldownRemainingMs ?? 0;
+              const targetTime = data.canLoginAtIso ? new Date(data.canLoginAtIso) : new Date(Date.now() + remainingMs);
+              const localAllowAt = targetTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+              const remainingMins = Math.max(1, Math.ceil(remainingMs / (1000 * 60)));
+              const cooldownMessage = `Shift cooldown active: You logged out of your shift. Per 1-hour cooling period rules, at ${localAllowAt} you are able to login and punch in attendance again (remaining: ${remainingMins}m).`;
+              triggerActionModal(
+                "info",
+                "Shift Cooldown Active",
+                cooldownMessage,
+                "COOLDOWN",
+                undefined,
+                [
+                  { label: "Cooldown Policy", value: "60 Minutes (1 Hour)" },
+                  { label: "Eligible Re-entry Time", value: localAllowAt },
+                  { label: "Time Remaining", value: `${remainingMins} minute(s)` },
+                  { label: "User Account", value: cleanEmail },
+                ],
+                data.userId || matchedUser.id
+              );
+            }
+            return;
           }
-          return;
-        }
 
-        // Successfully verified
-        setLoginEmail("");
-        setLoginPassword("");
-      } catch (err: any) {
-        console.error("Background verification error:", err);
-      }
+          // Successfully verified
+          setLoginEmail("");
+          setLoginPassword("");
+        } catch (err: any) {
+          console.error("Background verification error:", err);
+        }
+      })();
       return;
     }
 
@@ -1696,6 +1838,8 @@ export default function WorkMateEnterpriseApp() {
     try {
       setLoginLoading(true);
       setLoginError("");
+
+      const geo = await getClientGeolocation();
 
       const res = await fetch(`${API_BASE}/api/users/login`, {
         method: "POST",
@@ -1706,6 +1850,9 @@ export default function WorkMateEnterpriseApp() {
         body: JSON.stringify({
           email: cleanEmail,
           password: cleanPassword,
+          latitude: geo.latitude ?? undefined,
+          longitude: geo.longitude ?? undefined,
+          location: geo.location ?? undefined,
         }),
       });
 
@@ -1912,7 +2059,7 @@ export default function WorkMateEnterpriseApp() {
           const found = fetchedUsers.find((u) => u.id === savedUserId);
           if (found) {
             setActiveUser(found);
-            try { localStorage.setItem("workmate_active_user_cache", JSON.stringify(found)); } catch {}
+            try { localStorage.setItem("workmate_active_user_cache", JSON.stringify(found)); } catch { }
             setIsAuthModalOpen(false);
           } else {
             setActiveUser(null);
@@ -1934,7 +2081,7 @@ export default function WorkMateEnterpriseApp() {
         const found = fetchedUsers.find((u) => u.id === savedUserId);
         if (found) {
           setActiveUser((prev) => (prev?.id === found.id ? found : prev));
-          try { localStorage.setItem("workmate_active_user_cache", JSON.stringify(found)); } catch {}
+          try { localStorage.setItem("workmate_active_user_cache", JSON.stringify(found)); } catch { }
         }
       }
 
@@ -1951,7 +2098,7 @@ export default function WorkMateEnterpriseApp() {
           if (Array.isArray(tRes)) sessionStorage.setItem("wm_cache_tasks", JSON.stringify(tRes));
           if (sRes) sessionStorage.setItem("wm_cache_stats", JSON.stringify(sRes));
           if (Array.isArray(servRes)) sessionStorage.setItem("wm_cache_services", JSON.stringify(servRes));
-        } catch {}
+        } catch { }
       }
 
       void fetchAttendanceLogs();
@@ -1969,7 +2116,7 @@ export default function WorkMateEnterpriseApp() {
     // Active Client Heartbeat: Keep Render backend warm while tab is open
     const pingBackend = () => {
       if (typeof document !== "undefined" && !document.hidden) {
-        fetch(`${API_BASE}/health`).catch(() => {});
+        fetch(`${API_BASE}/health`).catch(() => { });
       }
     };
     const heartbeatTimer = setInterval(pingBackend, 4 * 60 * 1000);
@@ -2266,7 +2413,7 @@ export default function WorkMateEnterpriseApp() {
         if (typeof window !== "undefined") {
           try {
             sessionStorage.setItem("wm_cache_shift_summary", JSON.stringify(data));
-          } catch {}
+          } catch { }
         }
       }
     } catch (err) {
@@ -4525,6 +4672,7 @@ export default function WorkMateEnterpriseApp() {
         });
 
         const isSuperAdmin = activeUser?.role === "SUPER_ADMIN";
+        const isAdminOrSuperAdmin = activeUser?.role === "SUPER_ADMIN" || activeUser?.role === "ADMIN";
 
         return (
           <div>
@@ -5138,6 +5286,7 @@ export default function WorkMateEnterpriseApp() {
                       <th>Punch Out</th>
                       <th>Duration</th>
                       <th>Action / Status</th>
+                      {isAdminOrSuperAdmin && <th>📍 Punch Location (GPS)</th>}
                       <th>Shift Remarks</th>
                       <th>Timestamp</th>
                     </tr>
@@ -5223,6 +5372,59 @@ export default function WorkMateEnterpriseApp() {
                               </span>
                             </div>
                           </td>
+                          {isAdminOrSuperAdmin && (
+                            <td style={{ minWidth: "190px", maxWidth: "280px" }}>
+                              {log.latitude != null && log.longitude != null ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                  <div style={{ display: "flex", alignItems: "flex-start", gap: "5px" }}>
+                                    <span style={{ fontSize: "13px", lineHeight: "1" }}>📍</span>
+                                    <span style={{ fontSize: "11.5px", color: "#f8fafc", fontWeight: "600", lineHeight: "1.3" }}>
+                                      {log.location || "Precise Location"}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+                                    <span style={{
+                                      fontFamily: "JetBrains Mono, monospace",
+                                      fontSize: "10.5px",
+                                      color: "#38bdf8",
+                                      background: "rgba(56, 189, 248, 0.1)",
+                                      border: "1px solid rgba(56, 189, 248, 0.25)",
+                                      padding: "1px 6px",
+                                      borderRadius: "4px",
+                                    }}>
+                                      {Number(log.latitude).toFixed(4)}, {Number(log.longitude).toFixed(4)}
+                                    </span>
+                                    <a
+                                      href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{
+                                        fontSize: "11px",
+                                        color: "#34d399",
+                                        textDecoration: "none",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "3px",
+                                        fontWeight: "600",
+                                      }}
+                                      title="Open GPS coordinates on Google Maps"
+                                    >
+                                      🗺️ Map ↗
+                                    </a>
+                                  </div>
+                                </div>
+                              ) : log.location ? (
+                                <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                                  <span>📍</span>
+                                  <span style={{ fontSize: "11.5px", color: "#f8fafc" }}>{log.location}</span>
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: "11px", color: "var(--text-dim)", fontStyle: "italic" }}>
+                                  — GPS not logged
+                                </span>
+                              )}
+                            </td>
+                          )}
                           <td style={{ maxWidth: "240px", fontSize: "11.5px", color: "var(--text-muted)" }}>
                             {log.remarks || "Standard Shift Attendance Record"}
                           </td>
@@ -5514,6 +5716,28 @@ export default function WorkMateEnterpriseApp() {
                         <span>Active Tickets: <strong style={{ color: "#fff" }}>{u._count?.assignedIssues ?? 0}</strong></span>
                         <span>Tasks: <strong style={{ color: "#fff" }}>{u._count?.tasks ?? 0}</strong></span>
                       </div>
+
+                      {(u.lastLocation || (u.lastLatitude != null && u.lastLongitude != null)) && (
+                        <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px dashed var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px", fontSize: "11px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "4px", color: "#38bdf8", overflow: "hidden" }}>
+                            <span>📍</span>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.lastLocation || `${u.lastLatitude?.toFixed(4)}, ${u.lastLongitude?.toFixed(4)}`}>
+                              {u.lastLocation || `${u.lastLatitude?.toFixed(4)}, ${u.lastLongitude?.toFixed(4)}`}
+                            </span>
+                          </div>
+                          {u.lastLatitude != null && u.lastLongitude != null && (
+                            <a
+                              href={`https://www.google.com/maps?q=${u.lastLatitude},${u.lastLongitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: "#34d399", textDecoration: "none", fontWeight: "600", flexShrink: 0 }}
+                              title="Open on Google Maps"
+                            >
+                              Map ↗
+                            </a>
+                          )}
+                        </div>
+                      )}
 
                       {/* Inline Role Definition & Management */}
                       <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" }}>
@@ -7379,192 +7603,192 @@ export default function WorkMateEnterpriseApp() {
             {authTab === "register" && (
               (activeUser?.role === "SUPER_ADMIN" || users.length === 0) ? (
                 <form onSubmit={handleCreateUser}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                  <div className="form-group">
-                    <label className="form-label">Full Name *</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. Ankit Sharma"
-                      value={userForm.name}
-                      onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
-                      required
-                    />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                    <div className="form-group">
+                      <label className="form-label">Full Name *</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. Ankit Sharma"
+                        value={userForm.name}
+                        onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Work Email *</label>
+                      <input
+                        type="email"
+                        className="form-input"
+                        placeholder="e.g. ankit@company.com"
+                        value={userForm.email}
+                        onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                        required
+                      />
+                    </div>
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label">Work Email *</label>
-                    <input
-                      type="email"
-                      className="form-input"
-                      placeholder="e.g. ankit@company.com"
-                      value={userForm.email}
-                      onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Initial Account Password</span>
-                    <span style={{ color: "var(--accent-cyan)", fontSize: "11px" }}>Default: WorkMate@123</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="Leave blank to use default (WorkMate@123) or enter min 6 characters"
-                    value={userForm.password}
-                    onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                  />
-                  <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
-                    The user will use this password to sign into the Web Portal.
-                  </div>
-                </div>
-
-                {/* Role Definition Cards */}
-                <div className="form-group">
-                  <label className="form-label" style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Permission Role & Capabilities *</span>
-                    <span style={{ color: "var(--accent-cyan)", fontSize: "11px" }}>Selected: {userForm.role}</span>
-                  </label>
-
-                  <div className="role-card-grid">
-                    {[
-                      {
-                        role: "SUPER_ADMIN",
-                        icon: "👑",
-                        title: "SuperAdmin / VP",
-                        desc: "Full unrestricted platform control, microservice catalog, delete & manage users.",
-                      },
-                      {
-                        role: "MANAGER",
-                        icon: "👔",
-                        title: "Engineering Manager",
-                        desc: "Tech Lead oversight, dispatch work orders, triage approvals, workload rebalancing.",
-                      },
-                      {
-                        role: "ENGINEER",
-                        icon: "🛠️",
-                        title: "Software Engineer",
-                        desc: "Claim on-call incidents, run AI diagnostics, submit PRs, resolve error tickets.",
-                      },
-                      {
-                        role: "ADMIN",
-                        icon: "🛡️",
-                        title: "Platform Admin",
-                        desc: "Manage SLA thresholds, service health statuses, queue routing configurations.",
-                      },
-                      {
-                        role: "USER",
-                        icon: "👤",
-                        title: "Reporter / Developer",
-                        desc: "Submit bug tickets, track status, post comments, follow incident progress.",
-                      },
-                    ].map((r) => (
-                      <div
-                        key={r.role}
-                        className={`role-card ${userForm.role === r.role ? "selected" : ""}`}
-                        onClick={() => {
-                          const isSuperAdmin = r.role === "SUPER_ADMIN";
-                          setUserForm({
-                            ...userForm,
-                            role: r.role as Role,
-                            department: isSuperAdmin
-                              ? "All Engineering Squads (Global)"
-                              : userForm.department === "All Engineering Squads (Global)"
-                                ? "Backend & Core APIs"
-                                : userForm.department,
-                          });
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
-                          <span style={{ fontSize: "16px" }}>{r.icon}</span>
-                          <span style={{ fontSize: "13px", fontWeight: "800" }}>{r.title}</span>
-                        </div>
-                        <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: "1.4" }}>
-                          {r.desc}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                   <div className="form-group">
                     <label className="form-label" style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Engineering Squad / Department</span>
-                      {userForm.role === "SUPER_ADMIN" && (
-                        <span style={{ color: "var(--accent-cyan)", fontSize: "11px", fontWeight: "700" }}>
-                          👑 Locked: All Squads (SuperAdmin)
-                        </span>
-                      )}
+                      <span>Initial Account Password</span>
+                      <span style={{ color: "var(--accent-cyan)", fontSize: "11px" }}>Default: WorkMate@123</span>
                     </label>
-                    <select
-                      className="form-select"
-                      value={userForm.role === "SUPER_ADMIN" ? "All Engineering Squads (Global)" : userForm.department}
-                      onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
-                      disabled={userForm.role === "SUPER_ADMIN"}
-                      style={{
-                        opacity: userForm.role === "SUPER_ADMIN" ? 0.6 : 1,
-                        cursor: userForm.role === "SUPER_ADMIN" ? "not-allowed" : "pointer",
-                        background: userForm.role === "SUPER_ADMIN" ? "rgba(255,255,255,0.04)" : undefined,
-                      }}
-                    >
-                      {userForm.role === "SUPER_ADMIN" && (
-                        <option value="All Engineering Squads (Global)">
-                          🌐 All Engineering Squads (Global / Cross-Functional)
-                        </option>
-                      )}
-                      <option value="Backend & Core APIs">Backend & Core APIs</option>
-                      <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
-                      <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
-                      <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
-                      <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
-                      <option value="Information Security & SecOps">Information Security & SecOps</option>
-                    </select>
-                    {userForm.role === "SUPER_ADMIN" && (
-                      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
-                        SuperAdmins automatically oversee all engineering squads across the entire platform.
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Profile Avatar</label>
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="Optional custom image URL"
-                      value={userForm.avatar}
-                      onChange={(e) => setUserForm({ ...userForm, avatar: e.target.value })}
+                      placeholder="Leave blank to use default (WorkMate@123) or enter min 6 characters"
+                      value={userForm.password}
+                      onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
                     />
-                    <div className="avatar-preset-picker">
-                      <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Presets:</span>
-                      {AVATAR_PRESETS.map((url, idx) => (
-                        <img
-                          key={idx}
-                          src={url}
-                          alt="avatar preset"
-                          className={`avatar-preset-img ${userForm.avatar === url ? "selected" : ""}`}
-                          onClick={() => setUserForm({ ...userForm, avatar: url })}
-                        />
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                      The user will use this password to sign into the Web Portal.
+                    </div>
+                  </div>
+
+                  {/* Role Definition Cards */}
+                  <div className="form-group">
+                    <label className="form-label" style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Permission Role & Capabilities *</span>
+                      <span style={{ color: "var(--accent-cyan)", fontSize: "11px" }}>Selected: {userForm.role}</span>
+                    </label>
+
+                    <div className="role-card-grid">
+                      {[
+                        {
+                          role: "SUPER_ADMIN",
+                          icon: "👑",
+                          title: "SuperAdmin / VP",
+                          desc: "Full unrestricted platform control, microservice catalog, delete & manage users.",
+                        },
+                        {
+                          role: "MANAGER",
+                          icon: "👔",
+                          title: "Engineering Manager",
+                          desc: "Tech Lead oversight, dispatch work orders, triage approvals, workload rebalancing.",
+                        },
+                        {
+                          role: "ENGINEER",
+                          icon: "🛠️",
+                          title: "Software Engineer",
+                          desc: "Claim on-call incidents, run AI diagnostics, submit PRs, resolve error tickets.",
+                        },
+                        {
+                          role: "ADMIN",
+                          icon: "🛡️",
+                          title: "Platform Admin",
+                          desc: "Manage SLA thresholds, service health statuses, queue routing configurations.",
+                        },
+                        {
+                          role: "USER",
+                          icon: "👤",
+                          title: "Reporter / Developer",
+                          desc: "Submit bug tickets, track status, post comments, follow incident progress.",
+                        },
+                      ].map((r) => (
+                        <div
+                          key={r.role}
+                          className={`role-card ${userForm.role === r.role ? "selected" : ""}`}
+                          onClick={() => {
+                            const isSuperAdmin = r.role === "SUPER_ADMIN";
+                            setUserForm({
+                              ...userForm,
+                              role: r.role as Role,
+                              department: isSuperAdmin
+                                ? "All Engineering Squads (Global)"
+                                : userForm.department === "All Engineering Squads (Global)"
+                                  ? "Backend & Core APIs"
+                                  : userForm.department,
+                            });
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                            <span style={{ fontSize: "16px" }}>{r.icon}</span>
+                            <span style={{ fontSize: "13px", fontWeight: "800" }}>{r.title}</span>
+                          </div>
+                          <div style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: "1.4" }}>
+                            {r.desc}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
-                </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
-                  {activeUser && (
-                    <button className="btn btn-secondary" type="button" onClick={() => setIsAuthModalOpen(false)}>
-                      Cancel
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                    <div className="form-group">
+                      <label className="form-label" style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>Engineering Squad / Department</span>
+                        {userForm.role === "SUPER_ADMIN" && (
+                          <span style={{ color: "var(--accent-cyan)", fontSize: "11px", fontWeight: "700" }}>
+                            👑 Locked: All Squads (SuperAdmin)
+                          </span>
+                        )}
+                      </label>
+                      <select
+                        className="form-select"
+                        value={userForm.role === "SUPER_ADMIN" ? "All Engineering Squads (Global)" : userForm.department}
+                        onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
+                        disabled={userForm.role === "SUPER_ADMIN"}
+                        style={{
+                          opacity: userForm.role === "SUPER_ADMIN" ? 0.6 : 1,
+                          cursor: userForm.role === "SUPER_ADMIN" ? "not-allowed" : "pointer",
+                          background: userForm.role === "SUPER_ADMIN" ? "rgba(255,255,255,0.04)" : undefined,
+                        }}
+                      >
+                        {userForm.role === "SUPER_ADMIN" && (
+                          <option value="All Engineering Squads (Global)">
+                            🌐 All Engineering Squads (Global / Cross-Functional)
+                          </option>
+                        )}
+                        <option value="Backend & Core APIs">Backend & Core APIs</option>
+                        <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
+                        <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
+                        <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
+                        <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
+                        <option value="Information Security & SecOps">Information Security & SecOps</option>
+                      </select>
+                      {userForm.role === "SUPER_ADMIN" && (
+                        <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                          SuperAdmins automatically oversee all engineering squads across the entire platform.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Profile Avatar</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Optional custom image URL"
+                        value={userForm.avatar}
+                        onChange={(e) => setUserForm({ ...userForm, avatar: e.target.value })}
+                      />
+                      <div className="avatar-preset-picker">
+                        <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Presets:</span>
+                        {AVATAR_PRESETS.map((url, idx) => (
+                          <img
+                            key={idx}
+                            src={url}
+                            alt="avatar preset"
+                            className={`avatar-preset-img ${userForm.avatar === url ? "selected" : ""}`}
+                            onClick={() => setUserForm({ ...userForm, avatar: url })}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
+                    {activeUser && (
+                      <button className="btn btn-secondary" type="button" onClick={() => setIsAuthModalOpen(false)}>
+                        Cancel
+                      </button>
+                    )}
+                    <button className="btn btn-primary" type="submit" disabled={actionLoading}>
+                      {actionLoading ? "Provisioning..." : "✨ Provision Team Member"}
                     </button>
-                  )}
-                  <button className="btn btn-primary" type="submit" disabled={actionLoading}>
-                    {actionLoading ? "Provisioning..." : "✨ Provision Team Member"}
-                  </button>
-                </div>
-              </form>
+                  </div>
+                </form>
               ) : (
                 <div style={{ textAlign: "center", padding: "40px 20px" }}>
                   <div style={{ fontSize: "36px", marginBottom: "12px" }}>🔒</div>

@@ -39,6 +39,9 @@ const punchSchema = z.object({
   action: z.enum(["PUNCH_IN", "PUNCH_OUT"]),
   clientType: z.string().trim().default("WEB_PORTAL"),
   remarks: z.string().trim().optional(),
+  latitude: z.number().optional().nullable(),
+  longitude: z.number().optional().nullable(),
+  location: z.string().trim().optional().nullable(),
 });
 
 // GET /api/attendance - List attendance logs with datewise filter & statistics
@@ -150,7 +153,7 @@ router.post("/punch", async (req, res, next) => {
     return res.status(400).json({ error: "Invalid punch parameters", details: parsed.error.flatten() });
   }
 
-  const { userId, action, clientType, remarks } = parsed.data;
+  const { userId, action, clientType, remarks, latitude, longitude, location } = parsed.data;
 
   try {
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -267,6 +270,9 @@ router.post("/punch", async (req, res, next) => {
           shiftDate: todayStr,
           punchIn: now,
           remarks: logRemarks,
+          latitude: latitude != null ? latitude : null,
+          longitude: longitude != null ? longitude : null,
+          location: location || null,
           ipAddress: clientIp,
           userAgent: userAgent.slice(0, 255),
         },
@@ -277,6 +283,9 @@ router.post("/punch", async (req, res, next) => {
         data: {
           lastPunchIn: now,
           shiftStatus: "ON_DUTY",
+          ...(latitude != null ? { lastLatitude: latitude } : {}),
+          ...(longitude != null ? { lastLongitude: longitude } : {}),
+          ...(location ? { lastLocation: location } : {}),
         },
       });
 
@@ -327,6 +336,9 @@ router.post("/punch", async (req, res, next) => {
           punchOut: now,
           workHours,
           remarks: punchOutRemarks,
+          latitude: latitude != null ? latitude : null,
+          longitude: longitude != null ? longitude : null,
+          location: location || null,
           ipAddress: clientIp,
           userAgent: userAgent.slice(0, 255),
         },
@@ -338,6 +350,9 @@ router.post("/punch", async (req, res, next) => {
           lastPunchOut: now,
           lastLogoutAt: now,
           shiftStatus: "OFF_DUTY",
+          ...(latitude != null ? { lastLatitude: latitude } : {}),
+          ...(longitude != null ? { lastLongitude: longitude } : {}),
+          ...(location ? { lastLocation: location } : {}),
         },
       });
 
@@ -418,6 +433,11 @@ router.get("/export", async (req, res, next) => {
       "Punch Out Time",
       "Total Time (Punch In - Punch Out)",
       "Total Hours (Decimal Calculation)",
+      "Latitude",
+      "Longitude",
+      "GPS Coordinates",
+      "Punch Location / Nearby Address",
+      "Google Maps Link",
       "Shift Remarks",
       "Client Type",
       "Timestamp",
@@ -465,6 +485,12 @@ router.get("/export", async (req, res, next) => {
         decimalHours = "0.00";
       }
 
+      const latStr = log.latitude != null ? log.latitude.toFixed(6) : "N/A";
+      const lngStr = log.longitude != null ? log.longitude.toFixed(6) : "N/A";
+      const coordsStr = log.latitude != null && log.longitude != null ? `${log.latitude.toFixed(6)}, ${log.longitude.toFixed(6)}` : "N/A";
+      const locationStr = log.location ? log.location : "N/A";
+      const mapsLink = log.latitude != null && log.longitude != null ? `https://www.google.com/maps?q=${log.latitude},${log.longitude}` : "N/A";
+
       return [
         `"${log.id}"`,
         `"${log.shiftDate || new Date(log.timestamp).toISOString().slice(0, 10)}"`,
@@ -478,6 +504,11 @@ router.get("/export", async (req, res, next) => {
         `"${punchOutStr}"`,
         `"${totalTimeStr}"`,
         `${decimalHours}`,
+        `"${latStr}"`,
+        `"${lngStr}"`,
+        `"${coordsStr}"`,
+        `"${locationStr.replace(/"/g, '""')}"`,
+        `"${mapsLink}"`,
         `"${(log.remarks || "").replace(/"/g, '""')}"`,
         `"${log.clientType}"`,
         `"${new Date(log.timestamp).toLocaleString()}"`,
@@ -552,6 +583,11 @@ router.get("/export-excel", async (req, res, next) => {
       { header: "Punch Out Time", key: "punchOutStr", width: 16 },
       { header: "Total Shift Duration", key: "totalTimeStr", width: 20 },
       { header: "Total Hours (Decimal)", key: "decimalHours", width: 20 },
+      { header: "Latitude", key: "latitude", width: 16 },
+      { header: "Longitude", key: "longitude", width: 16 },
+      { header: "GPS Coordinates", key: "gpsCoordinates", width: 24 },
+      { header: "Punch Location / Nearby Address", key: "location", width: 36 },
+      { header: "Google Maps Link", key: "mapsLink", width: 38 },
       { header: "Shift Remarks", key: "remarks", width: 28 },
       { header: "Terminal Client", key: "clientType", width: 16 },
       { header: "Exact Timestamp", key: "timestampStr", width: 22 },
@@ -599,6 +635,9 @@ router.get("/export-excel", async (req, res, next) => {
         decimalHours = 0.00;
       }
 
+      const coordsStr = log.latitude != null && log.longitude != null ? `${log.latitude.toFixed(6)}, ${log.longitude.toFixed(6)}` : "N/A";
+      const mapsLink = log.latitude != null && log.longitude != null ? `https://www.google.com/maps?q=${log.latitude},${log.longitude}` : "N/A";
+
       return {
         id: log.id,
         shiftDate: log.shiftDate || new Date(log.timestamp).toISOString().slice(0, 10),
@@ -612,6 +651,11 @@ router.get("/export-excel", async (req, res, next) => {
         punchOutStr,
         totalTimeStr,
         decimalHours,
+        latitude: log.latitude != null ? log.latitude.toFixed(6) : "N/A",
+        longitude: log.longitude != null ? log.longitude.toFixed(6) : "N/A",
+        gpsCoordinates: coordsStr,
+        location: log.location || "N/A",
+        mapsLink,
         remarks: log.remarks || "",
         clientType: log.clientType,
         timestampStr: new Date(log.timestamp).toLocaleString(),
