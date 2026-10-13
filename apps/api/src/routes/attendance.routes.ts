@@ -635,9 +635,32 @@ router.get("/export-excel", async (req, res, next) => {
   }
 });
 
-// POST /api/attendance/scrap-old - Explicit 30-day (1-month) retention cycle scrap
-router.post("/scrap-old", async (_req, res, next) => {
+// POST /api/attendance/scrap-old - Retention cycle scrap (mode: "all" to clear completely or "30days")
+router.post("/scrap-old", async (req, res, next) => {
   try {
+    const mode = (req.query.mode || req.body?.mode || "30days") as string;
+    let resultCount = 0;
+
+    if (mode === "all") {
+      const result = await prisma.attendanceLog.deleteMany({});
+      resultCount = result.count;
+      // Reset user on-duty stamps for a clean slate
+      await prisma.user.updateMany({
+        data: {
+          shiftStatus: "OFF_DUTY",
+          lastPunchIn: null,
+          lastPunchOut: null,
+        },
+      });
+
+      return res.json({
+        success: true,
+        mode: "all",
+        scrappedCount: resultCount,
+        message: `Successfully scrapped all ${resultCount} attendance records from database, UI, and Excel reports. Clean slate active.`,
+      });
+    }
+
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const result = await prisma.attendanceLog.deleteMany({
@@ -646,6 +669,7 @@ router.post("/scrap-old", async (_req, res, next) => {
 
     res.json({
       success: true,
+      mode: "30days",
       scrappedCount: result.count,
       retentionPolicyDays: 30,
       cutoffDate: thirtyDaysAgo.toISOString(),
@@ -656,10 +680,39 @@ router.post("/scrap-old", async (_req, res, next) => {
   }
 });
 
-// DELETE /api/attendance/clear (SuperAdmin maintenance)
+// POST /api/attendance/clear-all - Instant purge of all attendance logs (UI & Excel clean slate)
+router.post("/clear-all", async (_req, res, next) => {
+  try {
+    const result = await prisma.attendanceLog.deleteMany({});
+    await prisma.user.updateMany({
+      data: {
+        shiftStatus: "OFF_DUTY",
+        lastPunchIn: null,
+        lastPunchOut: null,
+      },
+    });
+
+    res.json({
+      success: true,
+      scrappedCount: result.count,
+      message: `Scrapped and wiped all ${result.count} attendance records. Table and Excel exports are now completely clear.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/attendance (SuperAdmin maintenance)
 router.delete("/", async (_req, res, next) => {
   try {
     const result = await prisma.attendanceLog.deleteMany({});
+    await prisma.user.updateMany({
+      data: {
+        shiftStatus: "OFF_DUTY",
+        lastPunchIn: null,
+        lastPunchOut: null,
+      },
+    });
     res.json({ success: true, count: result.count, message: `Cleared ${result.count} attendance records.` });
   } catch (error) {
     next(error);

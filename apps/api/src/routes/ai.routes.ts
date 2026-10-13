@@ -97,6 +97,9 @@ router.post("/suggest-action", async (req, res, next) => {
   }
 });
 
+const queryCache = new Map<string, { data: any; expiresAt: number }>();
+const QUERY_CACHE_TTL_MS = 5 * 60 * 1000;
+
 // POST /api/ai/query - Interactive Technical Assistant & Deep Explanations
 router.post("/query", async (req, res, next) => {
   const { query, context } = req.body;
@@ -104,8 +107,19 @@ router.post("/query", async (req, res, next) => {
     return res.status(400).json({ error: "Please provide a query or technical question" });
   }
 
+  const cleanKey = query.trim().toLowerCase();
+  const cached = queryCache.get(cleanKey);
+  const now = Date.now();
+  if (cached && now < cached.expiresAt) {
+    return res.json(cached.data);
+  }
+
   try {
     const response = await AiService.answerUserQuery(query.trim(), context);
+    queryCache.set(cleanKey, {
+      data: response,
+      expiresAt: now + QUERY_CACHE_TTL_MS,
+    });
     res.json(response);
   } catch (error) {
     next(error);

@@ -341,7 +341,7 @@ URL/Endpoint: ${affectedUrl || "None"}`;
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: "application/json" }
       }),
-      signal: AbortSignal.timeout(6000)
+      signal: AbortSignal.timeout(2000)
     });
 
     if (!res.ok) return null;
@@ -354,6 +354,7 @@ URL/Endpoint: ${affectedUrl || "None"}`;
   /**
    * Comprehensive AI Explanation & Advisory Engine.
    * Explains any technical query, system error, or operational workflow in deep, clear detail.
+   * Serves autonomous domain intelligence in 0ms, falling back gracefully to Gemini when needed.
    */
   static async answerUserQuery(query: string, context?: any): Promise<{
     query: string;
@@ -368,55 +369,7 @@ URL/Endpoint: ${affectedUrl || "None"}`;
   }> {
     const qLower = (query || "").toLowerCase();
 
-    // Check Gemini API first if configured
-    if (this.geminiApiKey) {
-      try {
-        const prompt = `You are WorkMate AI, a senior Staff Principal Software Reliability Engineer and Operations Copilot.
-Provide an exceptionally clear, in-depth technical explanation for this query: "${query}".
-Return a JSON object with:
-- headline: string (sharp, authoritative title)
-- category: string (e.g. "Network & Microservices", "Database & Storage", "Authentication & Security", "Frontend & Rendering", "DevOps & Cloud", "Operations & Workflow")
-- overview: string (comprehensive 2-3 paragraph explanation of the problem, why it happens, and what is occurring under the hood)
-- rootCauses: string[] (3-5 bullet points explaining distinct root causes)
-- stepByStepRemediation: string[] (4-6 actionable, step-by-step technical instructions)
-- codeSnippetOrCommands: string (optional code snippet, SQL query, kubectl command, or config block)
-- proTipsAndBestPractices: string[] (3-4 proactive best practices to prevent recurrence)`;
-
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.geminiApiKey}`;
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: "application/json" }
-          }),
-          signal: AbortSignal.timeout(7000)
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) {
-            const parsed = JSON.parse(text);
-            return {
-              query,
-              headline: parsed.headline || `Technical Analysis: ${query}`,
-              category: parsed.category || "Software Reliability",
-              overview: parsed.overview || "",
-              rootCauses: parsed.rootCauses || [],
-              stepByStepRemediation: parsed.stepByStepRemediation || [],
-              codeSnippetOrCommands: parsed.codeSnippetOrCommands || undefined,
-              proTipsAndBestPractices: parsed.proTipsAndBestPractices || [],
-              generatedAt: new Date().toISOString(),
-            };
-          }
-        }
-      } catch (err) {
-        console.warn("Gemini query API call failed, falling back to autonomous knowledge engine:", err);
-      }
-    }
-
-    // Autonomous High-Precision Knowledge Engine
+    // Fast-path 1: Autonomous High-Precision Knowledge Engine (Instant sub-millisecond execution)
     if (qLower.includes("504") || qLower.includes("gateway timeout") || qLower.includes("payment") || qLower.includes("checkout") || qLower.includes("latency")) {
       return {
         query,
@@ -597,6 +550,54 @@ DATABASE_URL="postgresql://user:pass@ep-xyz-pooler.c-7.us-east-2.aws.neon.tech/n
         ],
         generatedAt: new Date().toISOString(),
       };
+    }
+
+    // For custom bespoke queries, attempt Gemini with a fast 2-second timeout
+    if (this.geminiApiKey) {
+      try {
+        const prompt = `You are WorkMate AI, a senior Staff Principal Software Reliability Engineer and Operations Copilot.
+Provide an exceptionally clear, in-depth technical explanation for this query: "${query}".
+Return a JSON object with:
+- headline: string (sharp, authoritative title)
+- category: string (e.g. "Network & Microservices", "Database & Storage", "Authentication & Security", "Frontend & Rendering", "DevOps & Cloud", "Operations & Workflow")
+- overview: string (comprehensive 2-3 paragraph explanation of the problem, why it happens, and what is occurring under the hood)
+- rootCauses: string[] (3-5 bullet points explaining distinct root causes)
+- stepByStepRemediation: string[] (4-6 actionable, step-by-step technical instructions)
+- codeSnippetOrCommands: string (optional code snippet, SQL query, kubectl command, or config block)
+- proTipsAndBestPractices: string[] (3-4 proactive best practices to prevent recurrence)`;
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.geminiApiKey}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: "application/json" },
+          }),
+          signal: AbortSignal.timeout(2000),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) {
+            const parsed = JSON.parse(text);
+            return {
+              query,
+              headline: parsed.headline || `Technical Analysis: ${query}`,
+              category: parsed.category || "Software Reliability",
+              overview: parsed.overview || "",
+              rootCauses: parsed.rootCauses || [],
+              stepByStepRemediation: parsed.stepByStepRemediation || [],
+              codeSnippetOrCommands: parsed.codeSnippetOrCommands || undefined,
+              proTipsAndBestPractices: parsed.proTipsAndBestPractices || [],
+              generatedAt: new Date().toISOString(),
+            };
+          }
+        }
+      } catch (err) {
+        console.warn("Gemini query API call timed out or failed, falling back to autonomous knowledge engine:", err);
+      }
     }
 
     // Comprehensive Fallback Technical Advisor

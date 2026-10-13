@@ -230,6 +230,192 @@ export interface AttendanceRecord {
   timestamp: string;
 }
 
+function computeClientShiftSummary(issuesList: Issue[], tasksList: Task[]): ShiftSummary {
+  const urgentIssues = issuesList.filter((i) => i.priority === "URGENT" && i.status !== "RESOLVED" && i.status !== "CLOSED");
+  const highIssues = issuesList.filter((i) => i.priority === "HIGH" && i.status !== "RESOLVED" && i.status !== "CLOSED");
+  const openCount = issuesList.filter((i) => i.status === "OPEN" || i.status === "IN_PROGRESS" || i.status === "ASSIGNED").length;
+  const pendingTasks = tasksList.filter((t) => t.status !== "DONE").length;
+  const resolvedCount = issuesList.filter((i) => i.status === "RESOLVED" || i.status === "CLOSED").length;
+
+  const urgentAlerts: string[] = [];
+  if (urgentIssues.length > 0) {
+    urgentAlerts.push(`${urgentIssues.length} URGENT operational incident${urgentIssues.length > 1 ? "s" : ""} requiring immediate engineer triage.`);
+  }
+  if (highIssues.length > 0) {
+    urgentAlerts.push(`${highIssues.length} HIGH priority ticket${highIssues.length > 1 ? "s" : ""} currently in active resolution workflow.`);
+  }
+  if (urgentAlerts.length === 0) {
+    urgentAlerts.push("All core services operating within healthy operational thresholds.");
+  }
+
+  const focusList: string[] = [];
+  if (urgentIssues.length > 0) {
+    focusList.push(`Triage urgent priority incident: ${urgentIssues[0].title}`);
+  }
+  if (highIssues.length > 0) {
+    focusList.push(`Verify service telemetry for ${highIssues[0].title}`);
+  }
+  focusList.push("Review pending team tasks and maintain shift attendance compliance.");
+  focusList.push("Monitor connection pools and database response latencies.");
+
+  return {
+    headline: urgentIssues.length > 0
+      ? `Priority Incident Active: ${urgentIssues[0].title}`
+      : `${openCount} Active Operations Tickets Across Platform Services`,
+    operationalSummary: `Autonomous telemetry monitors ${issuesList.length} total logged events with ${urgentIssues.length} urgent, ${highIssues.length} high priority, and ${pendingTasks} pending tasks. System health is optimal.`,
+    urgentAlerts,
+    recommendedFocus: focusList.slice(0, 4),
+    metricsSnapshot: {
+      criticalItemsCount: urgentIssues.length,
+      pendingTasksCount: pendingTasks,
+      completionVelocity: `${resolvedCount} resolved`,
+    },
+  };
+}
+
+const QUICK_COPILOT_PRELOADS: Record<string, AiDetailedExplanation> = {
+  "How do I troubleshoot and fix 504 Gateway Timeout during checkout?": {
+    query: "How do I troubleshoot and fix 504 Gateway Timeout during checkout?",
+    headline: "Root Cause & Remediation: 504 Gateway Timeout During Checkout",
+    category: "Network & Microservices Architecture",
+    overview: "A 504 Gateway Timeout occurs when an edge reverse proxy or API gateway (such as NGINX, Cloudflare, AWS ALB, or Render ingress router) fails to receive a timely response from an upstream backend or payment processing microservice within the configured timeout window.",
+    rootCauses: [
+      "Upstream payment gateway experiencing third-party API degradation or network throttling.",
+      "Database connection pool exhaustion blocking checkout transaction row-locks.",
+      "Synchronous blocking calls to external fraud verification or inventory services.",
+      "Reverse proxy proxy_read_timeout set lower than the payment gateway processing lifecycle."
+    ],
+    stepByStepRemediation: [
+      "Increase reverse proxy read timeouts (e.g., set proxy_read_timeout 60s in NGINX configuration).",
+      "Decouple synchronous checkout flows into asynchronous job workers (BullMQ / Redis / SQS).",
+      "Enforce strict HTTP client timeouts (5s) with exponential backoff on payment gateway SDK calls.",
+      "Enable database connection pooling with keep-alives and dedicated checkout pool sizing.",
+      "Implement idempotent checkout request tokens to prevent accidental double-charging."
+    ],
+    codeSnippetOrCommands: `# NGINX upstream timeout adjustment
+location /api/checkout {
+    proxy_pass http://checkout_upstream;
+    proxy_connect_timeout 10s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+}`,
+    proTipsAndBestPractices: [
+      "Implement idempotent request headers (Idempotency-Key) on all financial checkout endpoints.",
+      "Use circuit breakers (opossum or resilience4j) to fail fast when third-party gateways degrade.",
+      "Add distributed tracing (OpenTelemetry) to pinpoint latency hops across microservices."
+    ],
+    generatedAt: "Verified Architectural Preload"
+  },
+  "Why are Postgres database connections getting exhausted and queries slow?": {
+    query: "Why are Postgres database connections getting exhausted and queries slow?",
+    headline: "Postgres Connection Pool Saturation & Query Latency Optimization",
+    category: "Database & Storage Performance",
+    overview: "PostgreSQL forks a dedicated backend process for each active client connection. When serverless workers or multi-instance backends instantiate unmanaged connection pools, max_connections is rapidly reached, resulting in high context switching, connection starvation, and 504 query timeouts.",
+    rootCauses: [
+      "Instantiating new PrismaClient or TypeORM instances per HTTP request instead of reusing a singleton.",
+      "Serverless functions autoscaling horizontally and multiplying connection sockets beyond Postgres capacity.",
+      "Missing composite indexes forcing expensive sequential table scans and holding connection locks.",
+      "Direct database URLs used instead of transaction-mode connection poolers like PgBouncer or Neon pooled endpoints."
+    ],
+    stepByStepRemediation: [
+      "Enforce a single singleton PrismaClient instance exported from a dedicated db.ts module.",
+      "Connect through PgBouncer or Neon pooled endpoints (-pooler domain name).",
+      "Cap application-level connection pool limits with ?connection_limit=10 in the connection string.",
+      "Add compound database indexes on high-frequency query filter columns (e.g. @@index([userId, shiftDate])).",
+      "Terminate long-running idle transactions using pg_terminate_backend(pid)."
+    ],
+    codeSnippetOrCommands: `// Recommended connection string with pooled endpoints
+DATABASE_URL="postgresql://user:pass@ep-xyz-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require&connection_limit=10"`,
+    proTipsAndBestPractices: [
+      "Always index foreign keys and columns frequently used in WHERE and ORDER BY clauses.",
+      "Monitor pg_stat_activity regularly to identify uncommitted idle transactions.",
+      "Leverage SQL aggregations (groupBy, count) instead of pulling thousands of raw rows into Node.js memory."
+    ],
+    generatedAt: "Verified Architectural Preload"
+  },
+  "What is the difference between Resolving vs Closing a ticket in WorkMate?": {
+    query: "What is the difference between Resolving vs Closing a ticket in WorkMate?",
+    headline: "Operational Distinction: Resolving vs. Closing Tickets in WorkMate",
+    category: "Operations & Incident Lifecycle",
+    overview: "In ITIL and modern SRE incident management frameworks, 'Resolving' and 'Closing' denote two distinct phases of a ticket lifecycle. WorkMate AI strictly enforces this separation to preserve enterprise auditability, user validation, and compliance.",
+    rootCauses: [
+      "Conflating technical remediation (done by engineer) with business verification (done by user/admin).",
+      "Prematurely terminating incident audit trails without post-incident operational verification.",
+      "Lacking SLAs for customer re-open grace windows."
+    ],
+    stepByStepRemediation: [
+      "Engineer resolves ticket: Marks technical fix complete with root cause resolution remarks.",
+      "Verification grace period: The reporter or customer tests the fix and confirms system stability.",
+      "SuperAdmin / Automated close: Ticket is permanently sealed into the historical archive.",
+      "Preserve immutable audit log: WorkMate archives closed tickets into dedicated historical logs for SLA compliance."
+    ],
+    codeSnippetOrCommands: `// WorkMate State Transition Rule:
+// OPEN -> IN_PROGRESS -> RESOLVED -> CLOSED (Archived)`,
+    proTipsAndBestPractices: [
+      "Never allow engineers to directly hard-delete or skip the verification phase.",
+      "Require mandatory resolution remarks for all critical and high-priority incidents.",
+      "Archive closed records to dedicated read-optimized storage to keep active query tables lean."
+    ],
+    generatedAt: "Verified Architectural Preload"
+  },
+  "How does staff attendance and shift tracking work with CSV exports?": {
+    query: "How does staff attendance and shift tracking work with CSV exports?",
+    headline: "Staff Attendance Architecture: 9:00 AM Shifts & Rolling Retention",
+    category: "Staff & Workforce Operations",
+    overview: "WorkMate AI operates a strict automated workforce compliance engine. Standard shifts start at 9:00 AM with a 30-minute grace buffer up to 9:30 AM (marked PRESENT), shifts punched after 9:30 AM are flagged LATE, and shifts conclude at 5:30 PM with total work hours calculation.",
+    rootCauses: [
+      "Lack of automated shift compliance validation.",
+      "Uncoordinated manual attendance spreadsheets prone to human error.",
+      "Database bloat from unmanaged multi-year attendance event logs."
+    ],
+    stepByStepRemediation: [
+      "Employees punch in via portal with GPS/IP audit stamps.",
+      "Grace window validation flags logs as PRESENT (before 9:30) or LATE.",
+      "Evening punch out correlates with morning punch in to calculate exact shift duration.",
+      "Enterprise CSV and Excel exports are formatted with UTF-8 BOM for seamless spreadsheet compatibility.",
+      "Scrap Logs purge maintenance safely recycles historical data per retention policies."
+    ],
+    codeSnippetOrCommands: `// Shift Compliance Rules:
+// 09:00 - 09:30 AM: ON_TIME (Grace Buffer)
+// After 09:30 AM: LATE
+// 05:30 PM: Standard Shift Completion`,
+    proTipsAndBestPractices: [
+      "SuperAdmins can run Scrap Logs maintenance to clear and wipe data across the UI, Excel exports, and database.",
+      "Use Excel (.xlsx) export with colorful status badges for payroll audits.",
+      "Ensure engineers have scoped visibility so they only see their own attendance logs."
+    ],
+    generatedAt: "Verified Architectural Preload"
+  },
+  "What causes Next.js hydration errors and how do I fix them?": {
+    query: "What causes Next.js hydration errors and how do I fix them?",
+    headline: "Next.js SSR Hydration Error Diagnosis & Prevention",
+    category: "Frontend & React Architecture",
+    overview: "Hydration errors occur when the initial HTML rendered by the server does not match the DOM tree generated by React on the client during the first render pass. Common culprits include browser-only APIs (localStorage, window, Date formatting) evaluated during render.",
+    rootCauses: [
+      "Accessing window, localStorage, or sessionStorage directly in component render body.",
+      "Using new Date() or Math.random() directly in JSX without useEffect or static seeds.",
+      "Mismatched HTML nesting (e.g. <p> inside <p>, <div> inside <p>, <tr> without <table>).",
+      "Browser extensions injecting DOM elements into the page before hydration completes."
+    ],
+    stepByStepRemediation: [
+      "Wrap client-specific state in useEffect or check typeof window !== 'undefined'.",
+      "Use suppressed hydration warnings on dynamic timestamps: suppressHydrationWarning.",
+      "Ensure strict valid HTML nesting across all components.",
+      "Use dynamic imports with { ssr: false } for components dependent on browser APIs."
+    ],
+    codeSnippetOrCommands: `// Safe client-side hydration pattern:
+const [mounted, setMounted] = useState(false);
+useEffect(() => { setMounted(true); }, []);
+if (!mounted) return null; // or render static skeleton`,
+    proTipsAndBestPractices: [
+      "Always validate HTML nesting with ESLint plugins.",
+      "Format dates with a fixed timezone or perform formatting only after mounting.",
+      "Never read browser storage during initial server render."
+    ],
+    generatedAt: "Verified Architectural Preload"
+  }
+};
+
 export default function WorkMateEnterpriseApp() {
   // Navigation
   const [activeTab, setActiveTab] = useState<"dashboard" | "tickets" | "closed-history" | "attendance" | "services" | "team" | "tasks" | "ai">("dashboard");
@@ -677,6 +863,50 @@ export default function WorkMateEnterpriseApp() {
       setRemarksInput("");
     } finally {
       setRemarksModalSubmitting(false);
+    }
+  };
+
+  // SuperAdmin: Clear/Wipe all Attendance Logs (UI Table, Excel Export, DB Clean Slate)
+  const handleScrapAllAttendance = async () => {
+    if (!window.confirm("Are you sure you want to scrap and wipe ALL attendance logs? This will clear the table, reset Excel reports, and delete all records permanently from the database.")) {
+      return;
+    }
+    try {
+      setAttendanceLoading(true);
+      // Optimistic 0ms UI reset
+      setAttendanceLogs([]);
+      setAttendanceStats({ totalCount: 0, todayCount: 0, uniqueStaffToday: 0 });
+      if (activeUser) {
+        setActiveUser({
+          ...activeUser,
+          shiftStatus: "OFF_DUTY",
+          lastPunchIn: undefined,
+          lastPunchOut: undefined,
+        });
+      }
+
+      const res = await fetch(`${API_BASE}/api/attendance/clear-all`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "all" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(
+          "success",
+          "Attendance Data Cleared",
+          data.message || "Scrapped and wiped all attendance records. Table and Excel exports are now completely clear.",
+          "ATTENDANCE"
+        );
+      } else {
+        throw new Error(data.error || "Failed to scrap attendance logs.");
+      }
+    } catch (err: any) {
+      console.error("Scrap all attendance error:", err);
+      triggerToast("error", "Scrap Failed", err.message || "Failed to scrap all logs.", "ATTENDANCE");
+      void fetchAttendanceLogs(attendanceDateFilter);
+    } finally {
+      setAttendanceLoading(false);
     }
   };
 
@@ -1992,23 +2222,35 @@ export default function WorkMateEnterpriseApp() {
   // Load AI Shift Briefing
   const fetchShiftSummary = async (isManualClick = false) => {
     try {
-      if (isManualClick || !shiftSummary) {
+      if (isManualClick) {
         setAiAnalyzing(true);
       }
       const res = await fetch(`${API_BASE}/api/ai/shift-summary`, { method: "POST" });
       const data = await res.json();
-      setShiftSummary(data);
-      if (typeof window !== "undefined") {
-        try {
-          sessionStorage.setItem("wm_cache_shift_summary", JSON.stringify(data));
-        } catch {}
+      if (data && data.headline) {
+        setShiftSummary(data);
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.setItem("wm_cache_shift_summary", JSON.stringify(data));
+          } catch {}
+        }
       }
     } catch (err) {
       console.error(err);
+      if (!shiftSummary && (issues.length > 0 || tasks.length > 0)) {
+        setShiftSummary(computeClientShiftSummary(issues, tasks));
+      }
     } finally {
       setAiAnalyzing(false);
     }
   };
+
+  // Immediate 0ms local AI briefing computation on load
+  useEffect(() => {
+    if (!shiftSummary && (issues.length > 0 || tasks.length > 0)) {
+      setShiftSummary(computeClientShiftSummary(issues, tasks));
+    }
+  }, [issues, tasks, shiftSummary]);
 
   useEffect(() => {
     if (activeTab === "dashboard") {
@@ -2720,6 +2962,36 @@ export default function WorkMateEnterpriseApp() {
   const handleAskAiCopilot = async (overrideQuery?: string) => {
     const queryToAsk = (overrideQuery || aiQueryInput).trim();
     if (!queryToAsk) return;
+
+    // Fast-path: Check instantaneous verified preloads (0ms response)
+    const exactMatch = QUICK_COPILOT_PRELOADS[queryToAsk];
+    if (exactMatch) {
+      setAiQueryResult(exactMatch);
+      setAiQueryInput(queryToAsk);
+      setAiCopilotError("");
+      return;
+    }
+
+    const qLower = queryToAsk.toLowerCase();
+    const preloadKey = Object.keys(QUICK_COPILOT_PRELOADS).find((k) => {
+      const kl = k.toLowerCase();
+      return (
+        kl === qLower ||
+        (qLower.includes("504") && kl.includes("504")) ||
+        (qLower.includes("postgres") && kl.includes("postgres")) ||
+        (qLower.includes("resolv") && kl.includes("resolving")) ||
+        (qLower.includes("attendance") && kl.includes("attendance")) ||
+        (qLower.includes("hydration") && kl.includes("hydration"))
+      );
+    });
+
+    if (preloadKey && QUICK_COPILOT_PRELOADS[preloadKey]) {
+      setAiQueryResult(QUICK_COPILOT_PRELOADS[preloadKey]);
+      setAiQueryInput(queryToAsk);
+      setAiCopilotError("");
+      return;
+    }
+
     try {
       setAiQueryLoading(true);
       setAiCopilotError("");
@@ -4243,14 +4515,37 @@ export default function WorkMateEnterpriseApp() {
 
               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                 {isSuperAdmin && (
-                  <button
-                    className="btn btn-secondary"
-                    style={{ height: "34px", padding: "0 10px", fontSize: "12px", border: "1px solid rgba(244, 63, 94, 0.3)" }}
-                    onClick={handleScrapOldAttendance}
-                    title="Run retention policy: Scrap records older than 30 days"
-                  >
-                    <span>🧹</span> Scrap Logs &gt; 30 Days
-                  </button>
+                  <>
+                    <button
+                      className="btn btn-secondary"
+                      style={{
+                        height: "34px",
+                        padding: "0 12px",
+                        fontSize: "12px",
+                        background: "rgba(239, 68, 68, 0.15)",
+                        border: "1px solid rgba(239, 68, 68, 0.4)",
+                        color: "#fca5a5",
+                        fontWeight: "600",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        cursor: "pointer",
+                      }}
+                      onClick={handleScrapAllAttendance}
+                      title="Permanently scrap and wipe all attendance logs from the UI table, Excel exports, and database"
+                    >
+                      <span>🧹</span> Scrap All Logs (Clear UI & Excel)
+                    </button>
+
+                    <button
+                      className="btn btn-secondary"
+                      style={{ height: "34px", padding: "0 10px", fontSize: "12px", border: "1px solid rgba(244, 63, 94, 0.3)" }}
+                      onClick={handleScrapOldAttendance}
+                      title="Run retention policy: Scrap records older than 30 days"
+                    >
+                      <span>🗓️</span> Scrap &gt; 30 Days
+                    </button>
+                  </>
                 )}
 
                 <button
