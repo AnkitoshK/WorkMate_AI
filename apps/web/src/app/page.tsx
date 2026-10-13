@@ -4258,8 +4258,8 @@ export default function WorkMateEnterpriseApp() {
             </div>
           ) : (
             /* Table View */
-            <div className="table-container">
-              <table className="data-table">
+            <div className="table-container" style={{ overflowX: "auto" }}>
+              <table className="data-table" style={{ minWidth: "1050px" }}>
                 <thead>
                   <tr>
                     <th>Ticket ID</th>
@@ -4541,8 +4541,8 @@ export default function WorkMateEnterpriseApp() {
                 </p>
               </div>
             ) : (
-              <div className="table-container">
-                <table className="data-table">
+              <div className="table-container" style={{ overflowX: "auto" }}>
+                <table className="data-table" style={{ minWidth: "1150px" }}>
                   <thead>
                     <tr>
                       <th>Ticket ID</th>
@@ -5320,21 +5320,21 @@ export default function WorkMateEnterpriseApp() {
                 )}
               </div>
             ) : (
-              <div className="table-container">
-                <table className="data-table">
+              <div className="table-container" style={{ overflowX: "auto" }}>
+                <table className="data-table" style={{ minWidth: isAdminOrSuperAdmin ? "1520px" : "1240px" }}>
                   <thead>
                     <tr>
-                      <th>Staff Member</th>
-                      <th>Email Address</th>
-                      <th>Role & Squad</th>
-                      <th>Shift Date</th>
-                      <th>Punch In</th>
-                      <th>Punch Out</th>
-                      <th>Duration</th>
-                      <th>Action / Status</th>
-                      {isAdminOrSuperAdmin && <th>📍 Punch Location (GPS)</th>}
-                      <th>Shift Remarks</th>
-                      <th>Timestamp</th>
+                      <th style={{ whiteSpace: "nowrap", minWidth: "160px" }}>Staff Member</th>
+                      <th style={{ whiteSpace: "nowrap", minWidth: "190px" }}>Email Address</th>
+                      <th style={{ whiteSpace: "nowrap", minWidth: "160px" }}>Role & Squad</th>
+                      <th style={{ whiteSpace: "nowrap", minWidth: "110px" }}>Shift Date</th>
+                      <th style={{ whiteSpace: "nowrap", minWidth: "95px" }}>Punch In</th>
+                      <th style={{ whiteSpace: "nowrap", minWidth: "95px" }}>Punch Out</th>
+                      <th style={{ whiteSpace: "nowrap", minWidth: "95px" }}>Duration</th>
+                      <th style={{ whiteSpace: "nowrap", minWidth: "115px" }}>Action / Status</th>
+                      {isAdminOrSuperAdmin && <th style={{ whiteSpace: "nowrap", minWidth: "230px" }}>📍 Punch Location (GPS)</th>}
+                      <th style={{ whiteSpace: "nowrap", minWidth: "240px" }}>Shift Remarks</th>
+                      <th style={{ whiteSpace: "nowrap", minWidth: "135px" }}>Timestamp</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -5346,7 +5346,7 @@ export default function WorkMateEnterpriseApp() {
 
                       return (
                         <tr key={log.id}>
-                          <td>
+                          <td style={{ whiteSpace: "nowrap" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                               <div style={{
                                 width: "28px",
@@ -5365,29 +5365,29 @@ export default function WorkMateEnterpriseApp() {
                               <span style={{ fontWeight: "700", color: "#f8fafc" }}>{log.userName}</span>
                             </div>
                           </td>
-                          <td style={{ color: "var(--text-muted)", fontSize: "12.5px" }}>{log.userEmail}</td>
-                          <td>
+                          <td style={{ whiteSpace: "nowrap", color: "var(--text-muted)", fontSize: "12.5px" }}>{log.userEmail}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                               <span className="badge badge-assigned" style={{ fontSize: "10.5px" }}>{log.role}</span>
                               <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>{log.department || "Operations"}</span>
                             </div>
                           </td>
-                          <td>
+                          <td style={{ whiteSpace: "nowrap" }}>
                             <div style={{ fontWeight: "700", color: isToday ? "#38bdf8" : "#cbd5e1", fontSize: "12.5px" }}>
                               {log.shiftDate || d.toISOString().slice(0, 10)}
                             </div>
                           </td>
-                          <td>
+                          <td style={{ whiteSpace: "nowrap" }}>
                             <span style={{ fontFamily: "JetBrains Mono", fontSize: "12px", color: log.punchIn ? "#38bdf8" : "#94a3b8" }}>
                               {punchInDisplay}
                             </span>
                           </td>
-                          <td>
+                          <td style={{ whiteSpace: "nowrap" }}>
                             <span style={{ fontFamily: "JetBrains Mono", fontSize: "12px", color: log.punchOut ? "#34d399" : "#94a3b8" }}>
                               {punchOutDisplay}
                             </span>
                           </td>
-                          <td>
+                          <td style={{ whiteSpace: "nowrap" }}>
                             {(() => {
                               let durStr = "—";
                               if (log.punchIn && log.punchOut) {
@@ -5408,7 +5408,7 @@ export default function WorkMateEnterpriseApp() {
                               );
                             })()}
                           </td>
-                          <td>
+                          <td style={{ whiteSpace: "nowrap" }}>
                             <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
                               <span style={{ fontSize: "10.5px", fontWeight: "700", color: log.action === "PUNCH_IN" ? "#38bdf8" : log.action === "PUNCH_OUT" ? "#34d399" : "#94a3b8" }}>
                                 {log.action}
@@ -5419,7 +5419,7 @@ export default function WorkMateEnterpriseApp() {
                             </div>
                           </td>
                           {isAdminOrSuperAdmin && (
-                            <td style={{ minWidth: "190px", maxWidth: "280px" }}>
+                            <td style={{ minWidth: "230px", maxWidth: "320px" }}>
                               {log.latitude != null && log.longitude != null ? (
                                 <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                                   <div style={{ display: "flex", alignItems: "flex-start", gap: "5px" }}>
@@ -5471,10 +5471,10 @@ export default function WorkMateEnterpriseApp() {
                               )}
                             </td>
                           )}
-                          <td style={{ maxWidth: "240px", fontSize: "11.5px", color: "var(--text-muted)" }}>
+                          <td style={{ minWidth: "240px", maxWidth: "360px", fontSize: "11.5px", color: "var(--text-muted)", lineHeight: "1.4" }}>
                             {log.remarks || "Standard Shift Attendance Record"}
                           </td>
-                          <td style={{ fontSize: "11px", color: "var(--text-dim)", fontFamily: "JetBrains Mono" }}>
+                          <td style={{ minWidth: "135px", whiteSpace: "nowrap", fontSize: "11.5px", color: "var(--text-dim)", fontFamily: "JetBrains Mono" }}>
                             {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                           </td>
                         </tr>
