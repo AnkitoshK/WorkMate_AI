@@ -274,6 +274,40 @@ function computeClientShiftSummary(issuesList: Issue[], tasksList: Task[]): Shif
 }
 
 const QUICK_COPILOT_PRELOADS: Record<string, AiDetailedExplanation> = {
+  "Who built WorkMate AI?": {
+    query: "Who built WorkMate AI?",
+    headline: "Ankitosh Kumar — Creator & Lead Full-Stack Architect of WorkMate AI",
+    category: "Creator & Software Engineering Leadership",
+    overview: "WorkMate AI was conceived, architected, and fully built by ANKITOSH KUMAR.\n\nAnkitosh Kumar is an accomplished Full-Stack Software Engineer whose highest academic qualification is a Master of Computer Applications (MCA). He engineered WorkMate AI to bridge the critical gap between autonomous IT site reliability engineering, real-time microservices telemetry, and enterprise workforce shift governance.\n\n🌐 Live Animated Portfolio & Interactive Showcase:\n👉 https://animation-portfolio-one.vercel.app/\n\nGitHub: https://github.com/AnkitoshK\nLinkedIn: https://www.linkedin.com/in/ankitosh-kumar-7682a91b6/",
+    rootCauses: [
+      "Academic Qualification: Master of Computer Applications (MCA) — highest degree in Computer Science & Software Engineering.",
+      "Lead Full-Stack Architect: Designed the Next.js 15 frontend, Express microservices API, and PostgreSQL database schema from scratch.",
+      "Production Reliability Specialist: Engineered 0ms client-side hydration, sub-millisecond connection pooling, and AI operations copilot.",
+      "Multi-Project Portfolio: Creator of WorkMate AI, Clinic Care, 4Chakka, RestroScan, Job Portal, and Vehicle Insurance Database."
+    ],
+    stepByStepRemediation: [
+      "1. WorkMate AI: Enterprise Operations & Workforce Reliability Platform (Next.js, Express, Prisma, Postgres, Gemini AI).",
+      "2. Clinic Care: Healthcare clinic patient records and appointment scheduling application.",
+      "3. 4Chakka: Multi-tier automotive sales, service catalog, and test-drive booking portal.",
+      "4. RestroScan: Dynamic contactless QR restaurant ordering and live table billing platform.",
+      "5. Job Portal: High-concurrency job seeker matching and employer recruitment backend.",
+      "6. Explore Live Portfolio: Visit https://animation-portfolio-one.vercel.app/ for interactive animations and CV download."
+    ],
+    codeSnippetOrCommands: `# Developer Contact Card & Engineering Profile
+Developer   : ANKITOSH KUMAR
+Role        : Full-Stack Software Engineer
+Highest Deg : Master of Computer Applications (MCA)
+Portfolio   : https://animation-portfolio-one.vercel.app/
+GitHub      : https://github.com/AnkitoshK
+LinkedIn    : https://www.linkedin.com/in/ankitosh-kumar-7682a91b6/
+Status      : Active & Open for High-Impact Software Engineering Roles`,
+    proTipsAndBestPractices: [
+      "Visit https://animation-portfolio-one.vercel.app/ to explore Ankitosh's interactive animations, skills matrix, and live projects.",
+      "Download Ankitosh Kumar's CV and contact him directly via the portfolio contact form for technical collaborations.",
+      "Ankitosh specializes in building ultra-fast, resilient web applications with zero compromise on UX and architectural integrity."
+    ],
+    generatedAt: "Verified Creator Profile"
+  },
   "How do I troubleshoot and fix 504 Gateway Timeout during checkout?": {
     query: "How do I troubleshoot and fix 504 Gateway Timeout during checkout?",
     headline: "Root Cause & Remediation: 504 Gateway Timeout During Checkout",
@@ -2973,6 +3007,29 @@ export default function WorkMateEnterpriseApp() {
     }
 
     const qLower = queryToAsk.toLowerCase();
+
+    // Check for Creator / Developer queries (0ms instant response)
+    if (
+      qLower.includes("built") ||
+      qLower.includes("create") ||
+      qLower.includes("develop") ||
+      qLower.includes("devloper") ||
+      qLower.includes("maker") ||
+      qLower.includes("author") ||
+      qLower.includes("founder") ||
+      qLower.includes("owner") ||
+      qLower.includes("who is ankitosh") ||
+      qLower.includes("ankitosh kumar") ||
+      qLower.includes("ankitosh") ||
+      qLower.includes("who made") ||
+      qLower.includes("portfolio")
+    ) {
+      setAiQueryResult(QUICK_COPILOT_PRELOADS["Who built WorkMate AI?"]);
+      setAiQueryInput(queryToAsk);
+      setAiCopilotError("");
+      return;
+    }
+
     const preloadKey = Object.keys(QUICK_COPILOT_PRELOADS).find((k) => {
       const kl = k.toLowerCase();
       return (
@@ -3005,6 +3062,10 @@ export default function WorkMateEnterpriseApp() {
             activeRole: activeUser?.role,
             totalIssues: issues.length,
             activeServices: services.map((s) => s.name).join(", "),
+            openIssuesList: issues
+              .filter((i) => i.status !== "RESOLVED" && i.status !== "CLOSED")
+              .slice(0, 10)
+              .map((i) => `#TIK-${String(i.ticketNumber).padStart(3, "0")}: ${i.title} (${i.priority})`),
           },
         }),
       });
@@ -5736,6 +5797,19 @@ export default function WorkMateEnterpriseApp() {
               <button
                 type="button"
                 className="ai-chip"
+                style={{
+                  background: "linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25))",
+                  border: "1px solid rgba(168, 85, 247, 0.45)",
+                  color: "#d8b4fe",
+                  fontWeight: "700",
+                }}
+                onClick={() => void handleAskAiCopilot("Who built WorkMate AI?")}
+              >
+                👨‍💻 Who built WorkMate AI? (Ankitosh Kumar - MCA)
+              </button>
+              <button
+                type="button"
+                className="ai-chip"
                 onClick={() => void handleAskAiCopilot("How do I troubleshoot and fix 504 Gateway Timeout during checkout?")}
               >
                 ⚡ Fix 504 Gateway Timeout
@@ -5802,6 +5876,87 @@ export default function WorkMateEnterpriseApp() {
                     ✕ Dismiss
                   </button>
                 </div>
+
+                {/* Developer Portfolio Showcase Banner */}
+                {(aiQueryResult.category.toLowerCase().includes("creator") || aiQueryResult.headline.toLowerCase().includes("ankitosh")) && (
+                  <div style={{
+                    background: "linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2))",
+                    border: "1px solid rgba(168, 85, 247, 0.45)",
+                    borderRadius: "12px",
+                    padding: "16px 20px",
+                    marginBottom: "18px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: "14px",
+                    boxShadow: "0 8px 24px rgba(168, 85, 247, 0.15)",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                      <div style={{
+                        width: "50px",
+                        height: "50px",
+                        borderRadius: "50%",
+                        background: "linear-gradient(135deg, #6366f1, #a855f7)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "26px",
+                        boxShadow: "0 0 16px rgba(168, 85, 247, 0.5)",
+                      }}>
+                        👨‍💻
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "17px", fontWeight: "800", color: "#fff", letterSpacing: "0.02em" }}>
+                          ANKITOSH KUMAR
+                        </div>
+                        <div style={{ fontSize: "12.5px", color: "#d8b4fe", marginTop: "2px" }}>
+                          Software Engineer · Highest Degree: <strong style={{ color: "#38bdf8" }}>MCA</strong> (Master of Computer Applications)
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <a
+                        href="https://animation-portfolio-one.vercel.app/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-primary"
+                        style={{
+                          padding: "7px 16px",
+                          fontSize: "12.5px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          textDecoration: "none",
+                          background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
+                          border: "none",
+                          fontWeight: "700",
+                          boxShadow: "0 4px 12px rgba(236, 72, 153, 0.3)",
+                        }}
+                      >
+                        <span>🌐</span> View Live Animated Portfolio ↗
+                      </a>
+                      <a
+                        href="https://github.com/AnkitoshK"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-secondary"
+                        style={{ padding: "7px 12px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px", textDecoration: "none" }}
+                      >
+                        <span>🐙</span> GitHub Profile ↗
+                      </a>
+                      <a
+                        href="https://www.linkedin.com/in/ankitosh-kumar-7682a91b6/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-secondary"
+                        style={{ padding: "7px 12px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px", textDecoration: "none" }}
+                      >
+                        <span>💼</span> LinkedIn ↗
+                      </a>
+                    </div>
+                  </div>
+                )}
 
                 {/* Overview */}
                 <div style={{ fontSize: "13.5px", color: "#cbd5e1", lineHeight: "1.65", marginBottom: "16px" }}>

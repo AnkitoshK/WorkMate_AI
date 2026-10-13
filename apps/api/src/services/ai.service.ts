@@ -1,3 +1,5 @@
+import { prisma } from "../db.js";
+
 export interface AiTriageResult {
   summary: string;
   suggestedAction: string;
@@ -369,6 +371,155 @@ URL/Endpoint: ${affectedUrl || "None"}`;
   }> {
     const qLower = (query || "").toLowerCase();
 
+    // Fast-path 0: Creator & Developer of WorkMate AI (ANKITOSH KUMAR)
+    if (
+      qLower.includes("built") ||
+      qLower.includes("create") ||
+      qLower.includes("develop") ||
+      qLower.includes("devloper") ||
+      qLower.includes("maker") ||
+      qLower.includes("author") ||
+      qLower.includes("founder") ||
+      qLower.includes("owner") ||
+      qLower.includes("who is ankitosh") ||
+      qLower.includes("ankitosh kumar") ||
+      qLower.includes("ankitosh") ||
+      qLower.includes("who made") ||
+      qLower.includes("portfolio")
+    ) {
+      return {
+        query,
+        headline: "Ankitosh Kumar — Creator & Lead Full-Stack Architect of WorkMate AI",
+        category: "Creator & Software Engineering Leadership",
+        overview: `WorkMate AI was conceived, architected, and fully built by ANKITOSH KUMAR.
+
+Ankitosh Kumar is an accomplished Full-Stack Software Engineer whose highest academic qualification is a Master of Computer Applications (MCA). He engineered WorkMate AI to bridge the critical gap between autonomous IT site reliability engineering, real-time microservices telemetry, and enterprise workforce shift governance.
+
+🌐 Live Animated Portfolio & Interactive Showcase:
+👉 https://animation-portfolio-one.vercel.app/
+
+GitHub: https://github.com/AnkitoshK
+LinkedIn: https://www.linkedin.com/in/ankitosh-kumar-7682a91b6/`,
+        rootCauses: [
+          "Academic Qualification: Master of Computer Applications (MCA) — highest degree in Computer Science & Software Engineering.",
+          "Lead Full-Stack Architect: Designed the Next.js 15 frontend, Express microservices API, and PostgreSQL database schema from scratch.",
+          "High-Performance System Engineer: Implemented singleton database connection pools, 0ms optimistic UI rendering, and AI operations copilot.",
+          "Multi-Project Portfolio: Creator of WorkMate AI, Clinic Care, 4Chakka, RestroScan, Job Portal, and Vehicle Insurance Database."
+        ],
+        stepByStepRemediation: [
+          "1. WorkMate AI: Enterprise Operations & Workforce Reliability Platform (Next.js, Express, Prisma, Postgres, Gemini AI).",
+          "2. Clinic Care: Healthcare clinic patient records and appointment scheduling application.",
+          "3. 4Chakka: Multi-tier automotive sales, service catalog, and test-drive booking portal.",
+          "4. RestroScan: Dynamic contactless QR restaurant ordering and live table billing platform.",
+          "5. Job Portal: High-concurrency job seeker matching and employer recruitment backend.",
+          "6. Explore Live Portfolio: Visit https://animation-portfolio-one.vercel.app/ for interactive animations and CV download."
+        ],
+        codeSnippetOrCommands: `# Developer Contact Card & Engineering Profile
+Developer   : ANKITOSH KUMAR
+Role        : Full-Stack Software Engineer
+Highest Deg : Master of Computer Applications (MCA)
+Portfolio   : https://animation-portfolio-one.vercel.app/
+GitHub      : https://github.com/AnkitoshK
+LinkedIn    : https://www.linkedin.com/in/ankitosh-kumar-7682a91b6/
+Status      : Active & Open for High-Impact Software Engineering Roles`,
+        proTipsAndBestPractices: [
+          "Visit https://animation-portfolio-one.vercel.app/ to explore Ankitosh's interactive animations, skills matrix, and live projects.",
+          "Download Ankitosh Kumar's CV and contact him directly via the portfolio contact form for technical collaborations.",
+          "Ankitosh specializes in building ultra-fast, resilient web applications with zero compromise on UX and architectural integrity."
+        ],
+        generatedAt: new Date().toISOString(),
+      };
+    }
+
+    // Fast-path: Check if query references a specific ticket or issue number (e.g. TIK-001 or #1)
+    const ticketMatch = query.match(/(?:tik-?|ticket\s*#?|#)(\d+)/i);
+    if (ticketMatch) {
+      try {
+        const ticketNum = parseInt(ticketMatch[1], 10);
+        const foundIssue = await prisma.issue.findFirst({
+          where: { ticketNumber: ticketNum },
+          include: { serviceAsset: true, reporter: true, assignee: true },
+        });
+
+        if (foundIssue) {
+          return {
+            query,
+            headline: `#TIK-${String(foundIssue.ticketNumber).padStart(3, "0")}: ${foundIssue.title}`,
+            category: `Incident Tracking · ${foundIssue.category}`,
+            overview: `Ticket #TIK-${String(foundIssue.ticketNumber).padStart(3, "0")} is currently in "${foundIssue.status}" status with "${foundIssue.priority}" priority. It was reported by ${foundIssue.reporter?.name || "User"} (${foundIssue.reporter?.email || "Unknown"}) and is ${foundIssue.assignee ? `assigned to ${foundIssue.assignee.name}` : "unassigned"}. Description: "${foundIssue.description}". Affected Service: ${foundIssue.serviceAsset?.name || foundIssue.affectedUrl || "Core Platform"}.`,
+            rootCauses: [
+              `Reported Issue Severity: ${foundIssue.priority}`,
+              `Current Lifecycle State: ${foundIssue.status}`,
+              foundIssue.aiRootCause || "Incident investigation underway by on-call squad.",
+            ],
+            stepByStepRemediation: [
+              foundIssue.aiSuggestedAction || "1. Review application logs and service metrics around incident report timestamp.",
+              `2. Assignee (${foundIssue.assignee?.name || "On-Call Engineer"}) verifies root cause in staging environment.`,
+              "3. Deploy hotfix with automated regression tests.",
+              "4. Update resolution notes and mark status as RESOLVED.",
+              "5. SuperAdmin verifies fix and archives into Closed History.",
+            ],
+            codeSnippetOrCommands: `# Ticket Detail Quick Reference
+Ticket ID : #TIK-${String(foundIssue.ticketNumber).padStart(3, "0")}
+Title     : ${foundIssue.title}
+Status    : ${foundIssue.status}
+Priority  : ${foundIssue.priority}
+Service   : ${foundIssue.serviceAsset?.name || "General"}`,
+            proTipsAndBestPractices: [
+              "Use WorkMate's one-click Status update button on the Tickets tab to transition this ticket.",
+              "Ensure detailed notes are recorded in resolutionNotes before marking as Resolved.",
+            ],
+            generatedAt: new Date().toISOString(),
+          };
+        }
+      } catch (err) {
+        console.warn("Error looking up ticket by ID in AI answer:", err);
+      }
+    }
+
+    // Fast-path: Check if query asks for active or open issues list
+    if (
+      qLower.includes("open tickets") ||
+      qLower.includes("active tickets") ||
+      qLower.includes("list issues") ||
+      qLower.includes("what tickets") ||
+      qLower.includes("current issues") ||
+      qLower.includes("all issues")
+    ) {
+      try {
+        const openIssues = await prisma.issue.findMany({
+          where: { status: { in: ["OPEN", "IN_PROGRESS", "ASSIGNED"] } },
+          take: 5,
+          orderBy: { priority: "desc" },
+        });
+        return {
+          query,
+          headline: `Active Incident Fleet: ${openIssues.length} Unresolved Incidents`,
+          category: "Operations Telemetry",
+          overview: `WorkMate AI is tracking ${openIssues.length} active high-priority incidents across your platform services. The engineering team is actively monitoring service degradation and executing SLA response protocols.`,
+          rootCauses: openIssues.length > 0
+            ? openIssues.map((i: any) => `#TIK-${String(i.ticketNumber).padStart(3, "0")} [${i.priority}]: ${i.title} (${i.status})`)
+            : ["No active open issues found. All platform services are healthy."],
+          stepByStepRemediation: [
+            "1. Prioritize URGENT and HIGH severity tickets first to prevent SLA breaches.",
+            "2. Assign unassigned tickets to domain squad leads via the Tickets tab.",
+            "3. Review service health telemetry for affected microservices.",
+            "4. Document verified fixes in resolution notes before marking Resolved."
+          ],
+          codeSnippetOrCommands: openIssues.length > 0
+            ? openIssues.map((i: any) => `#TIK-${String(i.ticketNumber).padStart(3, "0")} | ${i.priority} | ${i.status} | ${i.title}`).join("\n")
+            : "# System Status: 100% Operational Baseline",
+          proTipsAndBestPractices: [
+            "Keep ticket backlog lean to maintain rapid turnaround velocity.",
+            "Utilize the AI Operations Briefing on the dashboard for shift handover summaries."
+          ],
+          generatedAt: new Date().toISOString(),
+        };
+      } catch (err) {
+        console.warn("Error looking up open issues:", err);
+      }
+    }
+
     // Fast-path 1: Autonomous High-Precision Knowledge Engine (Instant sub-millisecond execution)
     if (qLower.includes("504") || qLower.includes("gateway timeout") || qLower.includes("payment") || qLower.includes("checkout") || qLower.includes("latency")) {
       return {
@@ -552,21 +703,26 @@ DATABASE_URL="postgresql://user:pass@ep-xyz-pooler.c-7.us-east-2.aws.neon.tech/n
       };
     }
 
-    // For custom bespoke queries, attempt Gemini with a fast 2-second timeout
-    if (this.geminiApiKey) {
+    // For custom bespoke queries, query Google Gemini API with smart 4.5-second timeout
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.AI_API_KEY || this.geminiApiKey;
+    if (apiKey) {
       try {
         const prompt = `You are WorkMate AI, a senior Staff Principal Software Reliability Engineer and Operations Copilot.
 Provide an exceptionally clear, in-depth technical explanation for this query: "${query}".
-Return a JSON object with:
-- headline: string (sharp, authoritative title)
-- category: string (e.g. "Network & Microservices", "Database & Storage", "Authentication & Security", "Frontend & Rendering", "DevOps & Cloud", "Operations & Workflow")
-- overview: string (comprehensive 2-3 paragraph explanation of the problem, why it happens, and what is occurring under the hood)
-- rootCauses: string[] (3-5 bullet points explaining distinct root causes)
-- stepByStepRemediation: string[] (4-6 actionable, step-by-step technical instructions)
-- codeSnippetOrCommands: string (optional code snippet, SQL query, kubectl command, or config block)
-- proTipsAndBestPractices: string[] (3-4 proactive best practices to prevent recurrence)`;
+Note: If the query asks about who built, created, or developed WorkMate AI, or about the developer, the answer is ANKITOSH KUMAR, a Full-Stack Software Engineer whose highest degree is Master of Computer Applications (MCA), portfolio: https://animation-portfolio-one.vercel.app/, GitHub: https://github.com/AnkitoshK.
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.geminiApiKey}`;
+Return ONLY a valid JSON object matching this schema:
+{
+  "headline": "Sharp, authoritative title",
+  "category": "Domain category (e.g. Network & Microservices, Database & Storage, Authentication & Security, Frontend & Rendering, DevOps & Cloud, Operations & Workflow, Creator & Leadership)",
+  "overview": "Comprehensive 2-3 paragraph explanation of the problem/topic, why it happens, and what is occurring under the hood",
+  "rootCauses": ["3-5 bullet points explaining distinct root causes or architectural pillars"],
+  "stepByStepRemediation": ["4-6 actionable, step-by-step technical instructions"],
+  "codeSnippetOrCommands": "A helpful code snippet, configuration, command line, or architecture diagram",
+  "proTipsAndBestPractices": ["3-4 proactive best practices to prevent recurrence or optimize performance"]
+}`;
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -574,7 +730,7 @@ Return a JSON object with:
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { responseMimeType: "application/json" },
           }),
-          signal: AbortSignal.timeout(2000),
+          signal: AbortSignal.timeout(4500),
         });
 
         if (res.ok) {
@@ -600,28 +756,124 @@ Return a JSON object with:
       }
     }
 
-    // Comprehensive Fallback Technical Advisor
+    // Dynamic Topic Intelligence Engine (covers any engineering, cloud, or system query)
+    if (qLower.includes("docker") || qLower.includes("container") || qLower.includes("k8s") || qLower.includes("kubernetes")) {
+      return {
+        query,
+        headline: "Containerization & Kubernetes Workload Reliability",
+        category: "Cloud Infrastructure & DevOps",
+        overview: `WorkMate AI analyzed your query on container lifecycle and Kubernetes orchestration: "${query}". Container runtime failures and pod evictions typically arise from memory limit violations (OOMKilled), unhandled SIGTERM graceful shutdown failures, or mismatched resource requests.`,
+        rootCauses: [
+          "Container exceeded cgroup memory limit triggering kernel OOM killer (exit code 137).",
+          "Kubernetes livenessProbe failed due to slow cold starts or thread pool blocking.",
+          "Missing initContainers delaying prerequisite database schema migrations.",
+          "Dangling image layers and untracked container logs consuming node storage."
+        ],
+        stepByStepRemediation: [
+          "1. Inspect pod events: Run `kubectl describe pod <pod-name>` to identify OOMKilled or CrashLoopBackOff causes.",
+          "2. Configure memory request and limit boundaries in Deployment YAML (e.g. `limits.memory: 1Gi`).",
+          "3. Implement readiness and liveness probe initialDelaySeconds (e.g. 15s grace period).",
+          "4. Run `docker system prune -af --volumes` in local environments to release disk space.",
+          "5. Enable Prometheus container_memory_working_set_bytes alerts."
+        ],
+        codeSnippetOrCommands: `# Inspect container logs and resource usage:
+kubectl logs -f deployment/workmate-api --tail=100
+kubectl top pods --sort-by=memory`,
+        proTipsAndBestPractices: [
+          "Always set resources.requests equal to resources.limits for predictable Kubernetes QoS class Guarantees.",
+          "Use multi-stage Docker builds to keep production images below 150MB."
+        ],
+        generatedAt: new Date().toISOString(),
+      };
+    }
+
+    if (qLower.includes("redis") || qLower.includes("cache") || qLower.includes("queue") || qLower.includes("bullmq")) {
+      return {
+        query,
+        headline: "Distributed Caching & Async Queue Optimization",
+        category: "Distributed Systems & In-Memory Storage",
+        overview: `Caching architectures and asynchronous job queues provide essential protection against relational database overload. When addressing "${query}", key factors include cache stampede mitigation, TTL expiry strategies, and worker concurrency controls.`,
+        rootCauses: [
+          "Cache stampede (thundering herd) when high-traffic cache keys expire simultaneously.",
+          "Unbounded Redis memory growth exceeding `maxmemory` without an eviction policy.",
+          "BullMQ worker lock timeouts caused by long-running synchronous child tasks.",
+          "Redis connection socket timeouts during sudden traffic spikes."
+        ],
+        stepByStepRemediation: [
+          "1. Set `maxmemory-policy allkeys-lru` in redis.conf to gracefully evict least-recently used items.",
+          "2. Add randomized jitter to cache TTLs (e.g. 60s ± 10s) to prevent simultaneous expiry.",
+          "3. Use Redis connection pooling with keep-alive intervals.",
+          "4. Break down heavy queue jobs into smaller deterministic batches."
+        ],
+        codeSnippetOrCommands: `# Configure Redis eviction and monitor latency:
+CONFIG SET maxmemory 512mb
+CONFIG SET maxmemory-policy allkeys-lru
+redis-cli --latency-history`,
+        proTipsAndBestPractices: [
+          "Never store multi-megabyte payloads in Redis strings; split across hashes or S3 object stores.",
+          "Monitor Redis memory fragmentation ratio (`info memory`)."
+        ],
+        generatedAt: new Date().toISOString(),
+      };
+    }
+
+    if (qLower.includes("jwt") || qLower.includes("auth") || qLower.includes("token") || qLower.includes("security") || qLower.includes("login")) {
+      return {
+        query,
+        headline: "Enterprise Authentication & JWT Token Security",
+        category: "Authentication & Security Architecture",
+        overview: `In stateless authentication architectures like WorkMate AI, session validity, signature integrity, and secure cookie storage govern user identity. Addressing "${query}" requires validating token expiration windows, signature algorithms, and rotation mechanisms.`,
+        rootCauses: [
+          "Storing sensitive JWTs in localStorage instead of httpOnly secure cookies.",
+          "Token expiration mismatch causing premature session logouts or dangling privileges.",
+          "Missing signature algorithm verification allowing token forgery attacks.",
+          "CORS preflight failures blocking Authorization headers across origins."
+        ],
+        stepByStepRemediation: [
+          "1. Store access tokens in `httpOnly`, `Secure`, `SameSite=Lax` cookies to prevent XSS exfiltration.",
+          "2. Implement 15-minute access token lifespans paired with refresh token rotation.",
+          "3. Explicitly specify `algorithms: ['HS256']` or `['RS256']` in verification middleware.",
+          "4. Verify Access-Control-Allow-Origin headers in Express CORS configuration."
+        ],
+        codeSnippetOrCommands: `// Recommended Express cookie security settings
+res.cookie("auth_token", token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  maxAge: 15 * 60 * 1000,
+});`,
+        proTipsAndBestPractices: [
+          "Always rotate refresh tokens upon each use to detect replay attacks.",
+          "Never include sensitive credentials (passwords, secrets) inside JWT payloads."
+        ],
+        generatedAt: new Date().toISOString(),
+      };
+    }
+
+    // Comprehensive Fallback Technical Advisor for any general question
     return {
       query,
       headline: `Diagnostic & Resolution Analysis: ${query}`,
-      category: "Software Reliability & Systems",
-      overview: `WorkMate AI analyzed your query regarding "${query}". In production operations, addressing this requires isolating telemetry metrics, identifying upstream/downstream service dependencies, and executing structured remediation with verified rollback plans.`,
+      category: "Software Reliability & Systems Architecture",
+      overview: `WorkMate AI analyzed your query: "${query}". In modern full-stack software development and site reliability engineering, addressing this effectively involves analyzing telemetry, isolating dependencies, and executing structured remediation with verified rollback plans.`,
       rootCauses: [
-        "Configuration drift between local development, staging, and production environments.",
-        "Unchecked promise rejections or unhandled exceptions in asynchronous service handlers.",
-        "Resource saturation across CPU, container memory ceilings, or network socket limits."
+        "Architectural mismatch or configuration drift between environments.",
+        "Unchecked asynchronous promise rejections or thread pool starvation.",
+        "Resource contention across memory, CPU, or database network sockets.",
+        "Missing automated integration checks during continuous deployment."
       ],
       stepByStepRemediation: [
-        "1. Check Telemetry: Review application error logs and Datadog/CloudWatch metrics for the exact error timestamp.",
-        "2. Reproduce Locally: Simulate the exact request payload in your local environment or staging sandbox.",
-        "3. Formulate Hotfix: Prepare a focused patch addressing the root cause with unit regression tests.",
-        "4. Deploy Canary: Roll out the patch to a canary instance or preview deployment first.",
-        "5. Update Ticket: Document findings in the incident resolution notes and close the ticket in WorkMate."
+        "1. Check Telemetry: Review application error logs and server metrics for exact error timestamps.",
+        "2. Reproduce Locally: Replicate the request in local staging environments with verbose debug logging.",
+        "3. Implement Hotfix: Prepare a focused patch with unit and regression test coverage.",
+        "4. Deploy with Safeguards: Roll out to canary instances or preview environments first.",
+        "5. Update Documentation: Record the incident root cause in WorkMate ticket resolution notes."
       ],
-      codeSnippetOrCommands: `# Grep error logs in production:
-grep -i -E "error|exception|fail" /var/log/application.log | tail -n 50`,
+      codeSnippetOrCommands: `# Verify service logs and system status:
+git log -n 5 --oneline
+curl -I -s https://workmate.ai/api/health | grep HTTP`,
       proTipsAndBestPractices: [
-        "Maintain clear commit messages referencing ticket numbers: e.g. 'fix: resolve timeout in billing endpoint (#TIK-026)'.",
+        "Maintain clear commit messages referencing ticket numbers: e.g. 'fix: resolve timeout (#TIK-026)'.",
         "Record detailed resolution notes before closing tickets to enrich system audit intelligence."
       ],
       generatedAt: new Date().toISOString(),
