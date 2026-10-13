@@ -2,7 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { sendStyledExcelStream } from "../utils/excelExport.js";
-import { formatTimeInTimezone } from "../utils/timezone.js";
+import { formatTimeInTimezone, getZonedDateParts } from "../utils/timezone.js";
+import { resolveIpLocation } from "../utils/ipGeo.js";
 
 const router = Router();
 
@@ -26,12 +27,9 @@ async function autoScrapRecordsOlderThanOneMonth(): Promise<number> {
   }
 }
 
-// Helper: Format date as YYYY-MM-DD
-function getTodayDateString(d = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+// Helper: Format date as YYYY-MM-DD in user's timezone
+function getTodayDateString(d = new Date(), preferredTimezone = "Asia/Kolkata"): string {
+  return getZonedDateParts(d, preferredTimezone).dateString;
 }
 
 const punchSchema = z.object({
@@ -103,7 +101,8 @@ router.get("/", async (req, res, next) => {
     ]);
 
     // Calculate Today's punches (from midnight local/UTC)
-    const todayStr = getTodayDateString();
+    const clientTz = (req.headers["x-timezone"] || req.query.timeZone) as string || "Asia/Kolkata";
+    const todayStr = getTodayDateString(new Date(), clientTz);
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
@@ -161,14 +160,36 @@ router.post("/punch", async (req, res, next) => {
       return res.status(404).json({ error: "Employee account not found" });
     }
 
+    const clientTimezone = (req.headers["x-timezone"] || req.query.timeZone || req.body?.timeZone) as string || "Asia/Kolkata";
     const now = new Date();
-    const todayStr = getTodayDateString(now);
+    const zoned = getZonedDateParts(now, clientTimezone);
+    const todayStr = zoned.dateString;
 
     const clientIp =
       (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
       req.socket.remoteAddress ||
       "127.0.0.1";
     const userAgent = (req.headers["user-agent"] as string) || "Web Browser";
+
+    // Resolve location: GPS coords from client -> cached user profile -> server IP lookup -> fallback
+    let finalLat = latitude;
+    let finalLng = longitude;
+    let finalLoc = location;
+
+    if (finalLat == null || finalLng == null) {
+      if (user.lastLatitude != null && user.lastLongitude != null) {
+        finalLat = user.lastLatitude;
+        finalLng = user.lastLongitude;
+        finalLoc = finalLoc || user.lastLocation || null;
+      } else {
+        const resolved = await resolveIpLocation(clientIp);
+        if (resolved) {
+          finalLat = resolved.latitude;
+          finalLng = resolved.longitude;
+          finalLoc = finalLoc || resolved.location;
+        }
+      }
+    }
 
     if (action === "PUNCH_IN") {
       // Cooldown check: If employee logged out recently, enforce 1-hour cooldown
@@ -224,10 +245,8 @@ router.post("/punch", async (req, res, next) => {
         }
       }
 
-      // Calculate arrival status relative to 9:00 AM shift and 30-min buffer (up to 9:30 AM)
-      const currentHour = now.getHours();
-      const currentMinute = now.getMinutes();
-      const currentTotalMins = currentHour * 60 + currentMinute;
+      // Calculate arrival status relative to 9:00 AM shift and 30-min buffer (up to 9:30 AM) in user's timezone
+      const currentTotalMins = zoned.totalMins;
       const shiftStartMins = 9 * 60; // 9:00 AM = 540 mins
       const bufferEndMins = 9 * 60 + 30; // 9:30 AM = 570 mins
 
@@ -270,9 +289,9 @@ router.post("/punch", async (req, res, next) => {
           shiftDate: todayStr,
           punchIn: now,
           remarks: logRemarks,
-          latitude: latitude != null ? latitude : null,
-          longitude: longitude != null ? longitude : null,
-          location: location || null,
+          latitude: finalLat != null ? finalLat : null,
+          longitude: finalLng != null ? finalLng : null,
+          location: finalLoc || null,
           ipAddress: clientIp,
           userAgent: userAgent.slice(0, 255),
         },
@@ -283,9 +302,9 @@ router.post("/punch", async (req, res, next) => {
         data: {
           lastPunchIn: now,
           shiftStatus: "ON_DUTY",
-          ...(latitude != null ? { lastLatitude: latitude } : {}),
-          ...(longitude != null ? { lastLongitude: longitude } : {}),
-          ...(location ? { lastLocation: location } : {}),
+          ...(finalLat != null ? { lastLatitude: finalLat } : {}),
+          ...(finalLng != null ? { lastLongitude: finalLng } : {}),
+          ...(finalLoc ? { lastLocation: finalLoc } : {}),
         },
       });
 
@@ -315,11 +334,11 @@ router.post("/punch", async (req, res, next) => {
       const hours = Math.floor(workDurationMs / 3600000);
       const minutes = Math.floor((workDurationMs % 3600000) / 60000);
 
-      // Shift is 8 hours 30 minutes (8.5 hrs)
-      const isShiftCompleted = workHours >= 8.5 || (now.getHours() >= 17 && now.getMinutes() >= 30);
+      // Shift is 8 hours 30 minutes (8.5 hrs) or punching out at/after 5:30 PM (17:30 in user timezone)
+      const isShiftCompleted = workHours >= 8.5 || (zoned.hour >= 17 && zoned.minute >= 30) || zoned.hour >= 18;
       const status = isShiftCompleted ? "COMPLETED" : workHours >= 4.25 ? "HALF_DAY" : "EARLY_LOGOUT";
       const customNotes = remarks && remarks.trim() ? ` [Notes: ${remarks.trim()}]` : "";
-      const punchOutRemarks = `Punched out at ${now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Total Shift Duration: ${hours}h ${minutes}m. Status: ${status}.${customNotes}`;
+      const punchOutRemarks = `Punched out at ${zoned.timeString}. Total Shift Duration: ${hours}h ${minutes}m. Status: ${status}.${customNotes}`;
 
       const log = await prisma.attendanceLog.create({
         data: {
@@ -336,9 +355,9 @@ router.post("/punch", async (req, res, next) => {
           punchOut: now,
           workHours,
           remarks: punchOutRemarks,
-          latitude: latitude != null ? latitude : null,
-          longitude: longitude != null ? longitude : null,
-          location: location || null,
+          latitude: finalLat != null ? finalLat : null,
+          longitude: finalLng != null ? finalLng : null,
+          location: finalLoc || null,
           ipAddress: clientIp,
           userAgent: userAgent.slice(0, 255),
         },
@@ -350,9 +369,9 @@ router.post("/punch", async (req, res, next) => {
           lastPunchOut: now,
           lastLogoutAt: now,
           shiftStatus: "OFF_DUTY",
-          ...(latitude != null ? { lastLatitude: latitude } : {}),
-          ...(longitude != null ? { lastLongitude: longitude } : {}),
-          ...(location ? { lastLocation: location } : {}),
+          ...(finalLat != null ? { lastLatitude: finalLat } : {}),
+          ...(finalLng != null ? { lastLongitude: finalLng } : {}),
+          ...(finalLoc ? { lastLocation: finalLoc } : {}),
         },
       });
 

@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
 import { sendStyledExcelStream } from "../utils/excelExport.js";
 import { formatTimeInTimezone } from "../utils/timezone.js";
+import { resolveIpLocation } from "../utils/ipGeo.js";
 
 const router = Router();
 
@@ -161,15 +162,30 @@ router.post("/login", async (req, res, next) => {
     }
 
     // Record login timestamp & precise GPS location asynchronously in background (don't block the instant HTTP response)
-    const loginUpdateData: any = { lastLoginAt: new Date() };
-    if (typeof latitude === "number" && !isNaN(latitude)) loginUpdateData.lastLatitude = latitude;
-    if (typeof longitude === "number" && !isNaN(longitude)) loginUpdateData.lastLongitude = longitude;
-    if (typeof location === "string" && location.trim()) loginUpdateData.lastLocation = location.trim();
-
-    prisma.user.update({
-      where: { id: user.id },
-      data: loginUpdateData,
-    }).catch((err) => console.error("Async login touch:", err));
+    const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "127.0.0.1";
+    (async () => {
+      try {
+        const loginUpdateData: any = { lastLoginAt: new Date() };
+        if (typeof latitude === "number" && !isNaN(latitude)) {
+          loginUpdateData.lastLatitude = latitude;
+          if (typeof longitude === "number" && !isNaN(longitude)) loginUpdateData.lastLongitude = longitude;
+          if (typeof location === "string" && location.trim()) loginUpdateData.lastLocation = location.trim();
+        } else {
+          const resolved = await resolveIpLocation(clientIp);
+          if (resolved) {
+            loginUpdateData.lastLatitude = resolved.latitude;
+            loginUpdateData.lastLongitude = resolved.longitude;
+            loginUpdateData.lastLocation = resolved.location;
+          }
+        }
+        await prisma.user.update({
+          where: { id: user.id },
+          data: loginUpdateData,
+        });
+      } catch (err) {
+        console.error("Async login touch error:", err);
+      }
+    })();
 
     const { password: _, ...userWithoutPassword } = user;
 
