@@ -1,12 +1,11 @@
 import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import { prisma } from "../db.js";
 import { sendStyledExcelStream } from "../utils/excelExport.js";
 import { formatTimeInTimezone } from "../utils/timezone.js";
 
 const router = Router();
-const prisma = new PrismaClient();
 
 const roleEnum = z.preprocess(
   (val) => (val === "TECHNICIAN" ? "ENGINEER" : val),
@@ -470,6 +469,11 @@ router.get("/", async (_req, res, next) => {
         role: true,
         department: true,
         avatar: true,
+        shiftStatus: true,
+        lastLoginAt: true,
+        lastLogoutAt: true,
+        lastPunchIn: true,
+        lastPunchOut: true,
         _count: {
           select: {
             assignedIssues: true,

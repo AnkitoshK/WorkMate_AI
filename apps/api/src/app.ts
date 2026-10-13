@@ -12,7 +12,8 @@ import serviceRoutes from "./routes/service.routes.js";
 import attendanceRoutes from "./routes/attendance.routes.js";
 import closedTicketRoutes from "./routes/closed-ticket.routes.js";
 
-export const prisma = new PrismaClient();
+import { prisma } from "./db.js";
+export { prisma };
 export const app = express();
 
 app.use(cors());

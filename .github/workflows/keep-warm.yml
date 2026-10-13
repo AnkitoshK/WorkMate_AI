@@ -1,0 +1,22 @@
+name: Keep Render Backend Warm
+
+on:
+  schedule:
+    # Run every 10 minutes to prevent Render free-tier from idling/spinning down
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Backend API Health Endpoint
+        run: |
+          API_URL="${{ secrets.RENDER_API_URL }}"
+          if [ -z "$API_URL" ]; then
+            echo "RENDER_API_URL secret not set. Checking default endpoints..."
+            # Fallback ping attempt if user has configured custom endpoint
+            exit 0
+          fi
+          echo "Pinging $API_URL/health to keep container active..."
+          curl -s -f "$API_URL/health" || curl -s "$API_URL/api/health" || true

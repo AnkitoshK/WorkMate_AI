@@ -269,14 +269,70 @@ export default function WorkMateEnterpriseApp() {
   const [closedCategoryFilter, setClosedCategoryFilter] = useState("ALL");
   const [closedDepartmentFilter, setClosedDepartmentFilter] = useState("ALL");
 
-  // Core Data
-  const [users, setUsers] = useState<User[]>([]);
-  const [activeUser, setActiveUser] = useState<User | null>(null);
-  const [services, setServices] = useState<ServiceAsset[]>([]);
-  const [issues, setIssues] = useState<Issue[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [shiftSummary, setShiftSummary] = useState<ShiftSummary | null>(null);
+  // Core Data (with instant SWR client cache hydration)
+  const [users, setUsers] = useState<User[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const c = sessionStorage.getItem("wm_cache_users");
+        if (c) return JSON.parse(c);
+      } catch {}
+    }
+    return [];
+  });
+  const [activeUser, setActiveUser] = useState<User | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const c = localStorage.getItem("workmate_active_user_cache");
+        if (c) return JSON.parse(c);
+      } catch {}
+    }
+    return null;
+  });
+  const [services, setServices] = useState<ServiceAsset[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const c = sessionStorage.getItem("wm_cache_services");
+        if (c) return JSON.parse(c);
+      } catch {}
+    }
+    return [];
+  });
+  const [issues, setIssues] = useState<Issue[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const c = sessionStorage.getItem("wm_cache_issues");
+        if (c) return JSON.parse(c);
+      } catch {}
+    }
+    return [];
+  });
+  const [tasks, setTasks] = useState<Task[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const c = sessionStorage.getItem("wm_cache_tasks");
+        if (c) return JSON.parse(c);
+      } catch {}
+    }
+    return [];
+  });
+  const [stats, setStats] = useState<DashboardStats | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const c = sessionStorage.getItem("wm_cache_stats");
+        if (c) return JSON.parse(c);
+      } catch {}
+    }
+    return null;
+  });
+  const [shiftSummary, setShiftSummary] = useState<ShiftSummary | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const c = sessionStorage.getItem("wm_cache_shift_summary");
+        if (c) return JSON.parse(c);
+      } catch {}
+    }
+    return null;
+  });
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -327,8 +383,13 @@ export default function WorkMateEnterpriseApp() {
   const [profileAvatar, setProfileAvatar] = useState("");
   const [profileSaving, setProfileSaving] = useState(false);
 
-  // Loading States
-  const [loading, setLoading] = useState(true);
+  // Loading States (If cached data exists, load immediately with zero blank screen)
+  const [loading, setLoading] = useState(() => {
+    if (typeof window !== "undefined") {
+      return !sessionStorage.getItem("wm_cache_stats");
+    }
+    return true;
+  });
   const [actionLoading, setActionLoading] = useState(false);
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -529,14 +590,41 @@ export default function WorkMateEnterpriseApp() {
         return;
       }
 
+      // 1. Optimistically update local activeUser shift status
+      const updatedStatus = action === "PUNCH_IN" ? "ON_DUTY" : "OFF_DUTY";
+      setActiveUser((prev) => {
+        if (!prev) return null;
+        const updated = {
+          ...prev,
+          shiftStatus: updatedStatus,
+          lastPunchIn: action === "PUNCH_IN" ? new Date().toISOString() : prev.lastPunchIn,
+          lastPunchOut: action === "PUNCH_OUT" ? new Date().toISOString() : prev.lastPunchOut,
+        };
+        try {
+          localStorage.setItem("workmate_active_user_cache", JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      // 2. Prepend/update attendance log directly in state
+      if (data.log) {
+        setAttendanceLogs((prev) => [data.log, ...prev.filter((l) => l.id !== data.log.id)]);
+      }
+
+      // 3. Immediately display confirmation toast
       triggerToast(
         "success",
         action === "PUNCH_IN" ? "Shift Punch-In Recorded" : "Shift Punch-Out Recorded",
         data.message || `Attendance punch recorded for ${activeUser.name}.`,
         "ATTENDANCE"
       );
+
+      // 4. Release button loading state INSTANTLY - zero lag!
+      setPunchLoading(false);
+
+      // 5. Trigger background revalidations without blocking the punch button
       void fetchAttendanceLogs(attendanceDateFilter);
-      await refreshAllData();
+      void refreshAllData();
     } catch (err: any) {
       triggerToast("error", "Punch Error", err.message || "Failed to reach attendance endpoint.", "ATTENDANCE");
     } finally {
@@ -1223,6 +1311,7 @@ export default function WorkMateEnterpriseApp() {
         });
         localStorage.setItem("workmate_saved_accounts", JSON.stringify(filtered));
         setSavedAccounts(filtered);
+        localStorage.setItem("workmate_active_user_cache", JSON.stringify(user));
       } catch (e) {
         console.error(e);
       }
@@ -1411,6 +1500,7 @@ export default function WorkMateEnterpriseApp() {
     if (typeof window !== "undefined") {
       localStorage.removeItem("workmate_active_user_id");
       localStorage.removeItem("workmate_active_user_email");
+      localStorage.removeItem("workmate_active_user_cache");
     }
     setActiveUser(null);
     setSwitchNotification(null);
@@ -1558,12 +1648,14 @@ export default function WorkMateEnterpriseApp() {
           const found = fetchedUsers.find((u) => u.id === savedUserId);
           if (found) {
             setActiveUser(found);
+            try { localStorage.setItem("workmate_active_user_cache", JSON.stringify(found)); } catch {}
             setIsAuthModalOpen(false);
           } else {
             setActiveUser(null);
             if (typeof window !== "undefined") {
               localStorage.removeItem("workmate_active_user_id");
               localStorage.removeItem("workmate_active_user_email");
+              localStorage.removeItem("workmate_active_user_cache");
             }
             setAuthTab("login");
             setIsAuthModalOpen(true);
@@ -1578,13 +1670,26 @@ export default function WorkMateEnterpriseApp() {
         const found = fetchedUsers.find((u) => u.id === savedUserId);
         if (found) {
           setActiveUser((prev) => (prev?.id === found.id ? found : prev));
+          try { localStorage.setItem("workmate_active_user_cache", JSON.stringify(found)); } catch {}
         }
       }
 
       setIssues(Array.isArray(iRes) ? iRes : []);
       setTasks(Array.isArray(tRes) ? tRes : []);
-      setStats(sRes);
+      if (sRes) setStats(sRes);
       setServices(Array.isArray(servRes) ? servRes : []);
+
+      // Persist to client session cache for instantaneous sub-millisecond next loads
+      if (typeof window !== "undefined") {
+        try {
+          if (Array.isArray(uRes)) sessionStorage.setItem("wm_cache_users", JSON.stringify(uRes));
+          if (Array.isArray(iRes)) sessionStorage.setItem("wm_cache_issues", JSON.stringify(iRes));
+          if (Array.isArray(tRes)) sessionStorage.setItem("wm_cache_tasks", JSON.stringify(tRes));
+          if (sRes) sessionStorage.setItem("wm_cache_stats", JSON.stringify(sRes));
+          if (Array.isArray(servRes)) sessionStorage.setItem("wm_cache_services", JSON.stringify(servRes));
+        } catch {}
+      }
+
       void fetchAttendanceLogs();
       setErrorMessage("");
     } catch (err) {
@@ -1596,6 +1701,15 @@ export default function WorkMateEnterpriseApp() {
 
   useEffect(() => {
     void refreshAllData();
+
+    // Active Client Heartbeat: Keep Render backend warm while tab is open
+    const pingBackend = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        fetch(`${API_BASE}/health`).catch(() => {});
+      }
+    };
+    const heartbeatTimer = setInterval(pingBackend, 4 * 60 * 1000);
+    return () => clearInterval(heartbeatTimer);
   }, []);
 
   // Dynamic Role Update from UI
@@ -1876,12 +1990,19 @@ export default function WorkMateEnterpriseApp() {
   };
 
   // Load AI Shift Briefing
-  const fetchShiftSummary = async () => {
+  const fetchShiftSummary = async (isManualClick = false) => {
     try {
-      setAiAnalyzing(true);
+      if (isManualClick || !shiftSummary) {
+        setAiAnalyzing(true);
+      }
       const res = await fetch(`${API_BASE}/api/ai/shift-summary`, { method: "POST" });
       const data = await res.json();
       setShiftSummary(data);
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.setItem("wm_cache_shift_summary", JSON.stringify(data));
+        } catch {}
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -1890,10 +2011,10 @@ export default function WorkMateEnterpriseApp() {
   };
 
   useEffect(() => {
-    if (activeTab === "dashboard" && !shiftSummary) {
-      void fetchShiftSummary();
+    if (activeTab === "dashboard") {
+      void fetchShiftSummary(false);
     }
-  }, [activeTab, shiftSummary]);
+  }, [activeTab]);
 
   // Load Ticket Detail
   const openTicketDetail = async (issueId: string) => {
@@ -3237,7 +3358,7 @@ export default function WorkMateEnterpriseApp() {
               <span className="ai-badge">
                 <span>✨</span> Operations Summary & Recommendations
               </span>
-              <button className="btn btn-secondary" style={{ padding: "5px 12px", fontSize: "12px" }} onClick={fetchShiftSummary} disabled={aiAnalyzing}>
+              <button className="btn btn-secondary" style={{ padding: "5px 12px", fontSize: "12px" }} onClick={() => void fetchShiftSummary(true)} disabled={aiAnalyzing}>
                 {aiAnalyzing ? "Updating..." : "Refresh Summary"}
               </button>
             </div>

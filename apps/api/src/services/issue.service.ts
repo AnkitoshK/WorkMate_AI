@@ -1,7 +1,6 @@
-import { PrismaClient, IssueStatus, IssuePriority, IssueCategory } from "@prisma/client";
+import { IssueStatus, IssuePriority, IssueCategory } from "@prisma/client";
+import { prisma } from "../db.js";
 import { AiService } from "./ai.service.js";
-
-const prisma = new PrismaClient();
 
 export interface IssueFilter {
   status?: IssueStatus;

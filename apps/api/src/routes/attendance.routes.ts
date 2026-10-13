@@ -1,11 +1,10 @@
 import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { prisma } from "../db.js";
 import { sendStyledExcelStream } from "../utils/excelExport.js";
 import { formatTimeInTimezone } from "../utils/timezone.js";
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Helper: Auto-scrap records older than 30 days (1 month rolling retention cycle)
 async function autoScrapRecordsOlderThanOneMonth(): Promise<number> {
@@ -193,25 +192,18 @@ router.post("/punch", async (req, res, next) => {
         }
       }
 
-      // Check if employee already punched in or out today
-      const existingTodayPunch = await prisma.attendanceLog.findFirst({
+      // Fast single-query lookup for today's punches
+      const todayLogs = await prisma.attendanceLog.findMany({
         where: {
           userId: user.id,
           shiftDate: todayStr,
-          action: "PUNCH_IN",
         },
         orderBy: { timestamp: "desc" },
+        take: 10,
       });
 
-      const existingTodayPunchOut = await prisma.attendanceLog.findFirst({
-        where: {
-          userId: user.id,
-          shiftDate: todayStr,
-          action: "PUNCH_OUT",
-        },
-        orderBy: { timestamp: "desc" },
-      });
-
+      const existingTodayPunch = todayLogs.find((l) => l.action === "PUNCH_IN");
+      const existingTodayPunchOut = todayLogs.find((l) => l.action === "PUNCH_OUT");
       const isSubsequentPunch = !!(existingTodayPunch || existingTodayPunchOut);
 
       // If user has already completed/marked shift today, they cannot mark regular attendance again directly;

@@ -1,9 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../db.js";
 
 const router = Router();
-const prisma = new PrismaClient();
 
 const createServiceSchema = z.object({
   name: z.string().trim().min(2).max(100),

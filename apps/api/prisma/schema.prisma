@@ -180,6 +180,8 @@ model AttendanceLog {
   user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId, timestamp])
+  @@index([userId, shiftDate])
+  @@index([userId, shiftDate, action])
   @@index([shiftDate])
   @@index([timestamp])
 }

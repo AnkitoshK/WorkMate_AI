@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { prisma } from "../db.js";
 import { AiService } from "../services/ai.service.js";
 import { IssueService } from "../services/issue.service.js";
 import { TaskService } from "../services/task.service.js";
@@ -38,15 +39,43 @@ router.post("/triage", async (req, res, next) => {
   }
 });
 
+let shiftSummaryCache: { data: any; expiresAt: number } | null = null;
+const SUMMARY_CACHE_TTL_MS = 30 * 1000;
+
 // POST /api/ai/shift-summary
-router.post("/shift-summary", async (_req, res, next) => {
+router.post("/shift-summary", async (req, res, next) => {
+  const force = req.query.force === "true";
+  const now = Date.now();
+  if (!force && shiftSummaryCache && now < shiftSummaryCache.expiresAt) {
+    return res.json(shiftSummaryCache.data);
+  }
+
   try {
     const [issues, tasks] = await Promise.all([
-      IssueService.listIssues(),
-      TaskService.listTasks(),
+      prisma.issue.findMany({
+        select: {
+          title: true,
+          priority: true,
+          status: true,
+          category: true,
+          location: true,
+          department: true,
+        },
+      }),
+      prisma.task.findMany({
+        select: {
+          title: true,
+          status: true,
+          priority: true,
+        },
+      }),
     ]);
 
-    const summary = await AiService.generateShiftSummary(issues, tasks);
+    const summary = await AiService.generateShiftSummary(issues as any, tasks as any);
+    shiftSummaryCache = {
+      data: summary,
+      expiresAt: now + SUMMARY_CACHE_TTL_MS,
+    };
     res.json(summary);
   } catch (error) {
     next(error);
