@@ -116,7 +116,7 @@ WorkMate AI generates professionally styled, enterprise-grade Microsoft Excel (`
 ---
 
 ### 3. Role-Based Access Control (RBAC) & Authority Hierarchy
-WorkMate AI enforces granular, zero-leakage role governance across 5 enterprise tiers:
+WorkMate AI enforces granular, zero-leakage role governance across 6 enterprise tiers:
 
 | Role | Badge | Permissions & Operational Scope |
 |---|---|---|
@@ -125,6 +125,7 @@ WorkMate AI enforces granular, zero-leakage role governance across 5 enterprise 
 | **Software Engineer** | 🛠️ `ENGINEER` | Claim on-call incidents, run AI triage diagnostics, attach PR links, resolve tickets, submit personal shift attendance. |
 | **Platform Admin** | 🛡️ `ADMIN` | Configure SLA thresholds, monitor service health, manage routing queues, bypass shift cooldowns. |
 | **Developer / Reporter** | 👤 `USER` | Submit incident bug reports, track resolution status, post comments, follow incident progress. |
+| **Viewer / Read-Only** | 👁️ `VIEWER` | Strict read-only observer: view assigned squad/project tickets only. Cannot edit tickets, change status, post comments, punch attendance, create tasks, or export reports. |
 
 ---
 
@@ -215,6 +216,58 @@ WorkMate AI includes a straightforward, self-service password recovery flow that
 - **Password Strength Enforced**: Requires a minimum of 6 characters with real-time confirmation matching.
 - **Existing Rules Preserved**: Resetting password does not bypass shift attendance records, the 1-hour cooling period, or role-based security boundaries.
 - **Immediate Access**: Once the password is updated, the user is immediately logged in to their account, avoiding redundant login prompts.
+
+---
+
+### 10. Project-Scoped Read-Only Isolation & Viewer Flow (e.g. Softech Solution)
+WorkMate AI supports granular multi-tenant project isolation and client/auditor observation via the **`VIEWER`** role and **Engineering Squad / Project Scoping**:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                   Incident Ticket Routed to Project                    │
+│                      e.g. "Softech Solution"                           │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+         ┌──────────────────────────┴──────────────────────────┐
+         ▼                                                     ▼
+┌─────────────────────────────────┐   ┌─────────────────────────────────┐
+│       Software Engineer         │   │       Viewer / Read-Only        │
+│   (Squad: Softech Solution)     │   │   (Squad: Softech Solution)     │
+├─────────────────────────────────┤   ├─────────────────────────────────┤
+│ • See Softech Solution tickets  │   │ • See Softech Solution tickets  │
+│ • Update Status (In Progress...)│   │ • ❌ Status locked (Read-Only)  │
+│ • Mark Resolved & Close tickets │   │ • ❌ Lifecycle actions hidden   │
+│ • Post remediation comments     │   │ • ❌ Comment posting disabled   │
+│ • Run AI Copilot triage advice  │   │ • ❌ AI triage trigger disabled │
+│ • Punch daily shift attendance  │   │ • ❌ Punch Terminal disabled    │
+│ • Export Excel/CSV reports      │   │ • ❌ All Exports/Downloads OFF  │
+│ • Create & manage work tasks    │   │ • ❌ Task editing/creation OFF  │
+└─────────────────────────────────┘   └─────────────────────────────────┘
+```
+
+#### Detailed Operational Walkthrough:
+1. **User Provisioning & Project Assignment**:
+   - In the Provision New Team Member modal (SuperAdmin `+ Add User`) or Registration modal, select the **`👁️ Viewer / Read-Only`** role card.
+   - Under **Engineering Squad / Project**, assign the user to a dedicated project (e.g., `💻 Softech Solution`), select from registered microservices, or type any custom project name.
+   - **Example Setup**:
+     - **User 1 (Software Engineer)**: `rajesh@softech.com` | `Role: ENGINEER` | `Squad: Softech Solution`
+     - **User 2 (Auditor / Client)**: `anita@softech.com` | `Role: VIEWER` | `Squad: Softech Solution`
+2. **Project-Level Ticket Visibility**:
+   - Tickets logged with department `Softech Solution` or linked to a `Softech Solution` service asset are visible **strictly** to engineers and viewers assigned to `Softech Solution` (and SuperAdmins).
+   - Tickets from other squads (e.g., `DevOps & Cloud SRE`, `Backend & Core APIs`) are completely invisible to both users.
+3. **Multi-Layer Zero-Edit Enforcement**:
+   - **Ticket Lifecycle**: In the ticket detail modal, the status dropdown is disabled (`disabled={true}`) with a visual `👁️ Read-Only Viewer` tag. Action buttons (*Mark Resolved*, *Close & Archive*, *Start Progress*) are completely removed.
+   - **Comment Thread**: The comment submission form is replaced with an informational banner: *"Viewing Mode: You have read-only privileges. Posting comments or updates is disabled."*
+   - **Shift Attendance**: The Punch Terminal replaces punch-in and punch-out buttons with a protective banner: *"Viewer Account (Read-Only): Attendance logging and shift punches are disabled for your profile."*
+   - **Report Downloads**: Excel export buttons (`.xlsx`), CSV download buttons, and direct server CSV links are stripped from Active Tickets, Closed Tickets, Tasks, and Attendance tables.
+   - **Task Checkboxes**: Task status toggle checkboxes are disabled (`disabled={true}`) and the task creation card informs the viewer that task management is restricted.
+4. **Backend API Security Layer (Defense-in-Depth)**:
+   - Even if unauthorized API requests are sent via curl, scripts, or Postman, the Express backend returns `403 Forbidden`:
+     - `POST /api/attendance/punch` ➔ `403 Forbidden` (`Viewer accounts have read-only permissions and are not authorized to mark attendance punches`)
+     - `GET /api/attendance/export` & `/export-excel` ➔ `403 Forbidden` (`Viewer accounts do not have permission to download attendance reports`)
+     - `GET /api/closed-tickets/export` ➔ `403 Forbidden` (`Viewer accounts do not have permission to download closed ticket reports`)
+     - `POST /api/issues`, `PATCH /:id`, `DELETE /:id`, `POST /:id/comments` ➔ `403 Forbidden` (`Viewer accounts have read-only access`)
+     - `POST /api/tasks`, `PATCH /:id`, `DELETE /:id` ➔ `403 Forbidden` (`Viewer accounts have read-only access`)
 
 ---
 
@@ -338,12 +391,14 @@ Once launched, open your web browser:
 
 You can log into the local web portal using any of the simulated enterprise accounts:
 
-| Name | Role | Email | Password |
-|---|---|---|---|
-| **Sarah Chen** | Super Admin | `admin@workmate.internal` | `WorkMate@123` |
-| **Marcus Vance** | Operations & Dispatch Manager | `marcus@workmate.internal` | `WorkMate@123` |
-| **Alex Rivera** | Senior Software Engineer | `alex@workmate.internal` | `WorkMate@123` |
-| **Priya Sharma** | Network & Systems Specialist | `priya@workmate.internal` | `WorkMate@123` |
+| Name | Role | Email | Password | Squad / Project Scope |
+|---|---|---|---|---|
+| **Sarah Chen** | Super Admin | `admin@workmate.internal` | `WorkMate@123` | Global (All Squads) |
+| **Marcus Vance** | Operations & Dispatch Manager | `marcus@workmate.internal` | `WorkMate@123` | Backend & Core APIs |
+| **Alex Rivera** | Senior Software Engineer | `alex@workmate.internal` | `WorkMate@123` | Backend & Core APIs |
+| **Priya Sharma** | Network & Systems Specialist | `priya@workmate.internal` | `WorkMate@123` | Cloud Infra |
+| **Rajesh Engineer** | Software Engineer | `rajesh@softech.com` | `WorkMate@123` | 💻 Softech Solution |
+| **Anita Viewer** | Viewer / Read-Only | `anita@softech.com` | `WorkMate@123` | 💻 Softech Solution |
 
 ---
 
