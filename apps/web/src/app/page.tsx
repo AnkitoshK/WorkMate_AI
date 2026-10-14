@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef, FormEvent } from "reac
 import { downloadStyledExcel } from "../utils/excelExport";
 
 // --- Types ---
-export type Role = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "ENGINEER" | "USER";
+export type Role = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "ENGINEER" | "USER" | "VIEWER";
 export type IssueStatus = "OPEN" | "ASSIGNED" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
 export type IssuePriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type IssueCategory = "HARDWARE" | "SOFTWARE" | "NETWORK" | "FACILITY" | "SAFETY" | "OTHER";
@@ -898,6 +898,11 @@ export default function WorkMateEnterpriseApp() {
       return;
     }
 
+    if (activeUser.role === "VIEWER") {
+      triggerToast("error", "Action Prohibited", "Viewer accounts have read-only permissions and cannot log attendance punches.", "ATTENDANCE");
+      return;
+    }
+
     try {
       setPunchLoading(true);
 
@@ -1004,6 +1009,11 @@ export default function WorkMateEnterpriseApp() {
   const handleInitiatePunch = (action: "PUNCH_IN" | "PUNCH_OUT", forceRemarks = false) => {
     if (!activeUser) {
       triggerToast("warning", "Authentication Required", "Please sign in to log your attendance punch.", "ATTENDANCE");
+      return;
+    }
+
+    if (activeUser.role === "VIEWER") {
+      triggerToast("error", "Action Prohibited", "Viewer accounts have read-only permissions and cannot log attendance punches.", "ATTENDANCE");
       return;
     }
 
@@ -1116,6 +1126,10 @@ export default function WorkMateEnterpriseApp() {
 
   // Export Attendance CSV Report (Respects date filter, user role scoping and UTF-8 BOM)
   const handleExportAttendanceCsv = () => {
+    if (activeUser?.role === "VIEWER") {
+      triggerToast("error", "Action Prohibited", "Viewer accounts do not have permission to download reports.", "ATTENDANCE");
+      return;
+    }
     // Normal users/engineers only export their own records
     const recordsToExport = activeUser?.role === "SUPER_ADMIN"
       ? attendanceLogs
@@ -1268,6 +1282,10 @@ export default function WorkMateEnterpriseApp() {
 
   // Export Closed Tickets CSV Report (Robust Blob + UTF-8 BOM, never truncated by #)
   const handleExportClosedTicketsCsv = () => {
+    if (activeUser?.role === "VIEWER") {
+      triggerToast("error", "Action Prohibited", "Viewer accounts do not have permission to download reports.", "CLOSE");
+      return;
+    }
     // Combine issue records with status CLOSED and dedicated ClosedTicket database archive
     const closedMap = new Map<number, any>();
 
@@ -1374,6 +1392,10 @@ export default function WorkMateEnterpriseApp() {
 
   // Export Attendance Excel Report (.xlsx with colourful formatted headings & calculation columns)
   const handleExportAttendanceExcel = async () => {
+    if (activeUser?.role === "VIEWER") {
+      triggerToast("error", "Action Prohibited", "Viewer accounts do not have permission to download reports.", "ATTENDANCE");
+      return;
+    }
     const recordsToExport = activeUser?.role === "SUPER_ADMIN"
       ? attendanceLogs
       : attendanceLogs.filter(
@@ -1520,6 +1542,10 @@ export default function WorkMateEnterpriseApp() {
 
   // Export Closed Tickets Excel Report (.xlsx with colourful formatted headings)
   const handleExportClosedTicketsExcel = async () => {
+    if (activeUser?.role === "VIEWER") {
+      triggerToast("error", "Action Prohibited", "Viewer accounts do not have permission to download reports.", "CLOSE");
+      return;
+    }
     const closedMap = new Map<number, any>();
 
     issues.filter((i) => i.status === "CLOSED").forEach((iss) => {
@@ -1596,6 +1622,10 @@ export default function WorkMateEnterpriseApp() {
 
   // Export Active/Filtered Tickets Excel Report (.xlsx with colourful formatted headings)
   const handleExportTicketsExcel = async () => {
+    if (activeUser?.role === "VIEWER") {
+      triggerToast("error", "Action Prohibited", "Viewer accounts do not have permission to download reports.", "GENERAL");
+      return;
+    }
     if (filteredIssues.length === 0) {
       triggerToast("warning", "No Tickets", "There are no tickets matching current filters to export.", "GENERAL");
       return;
@@ -1643,6 +1673,10 @@ export default function WorkMateEnterpriseApp() {
 
   // Export Field Tasks Excel Report (.xlsx with colourful formatted headings)
   const handleExportTasksExcel = async () => {
+    if (activeUser?.role === "VIEWER") {
+      triggerToast("error", "Action Prohibited", "Viewer accounts do not have permission to download reports.", "TASK");
+      return;
+    }
     if (filteredTasks.length === 0) {
       triggerToast("warning", "No Tasks", "There are no tasks to export.", "TASK");
       return;
@@ -2866,6 +2900,10 @@ export default function WorkMateEnterpriseApp() {
       alert("⚠️ Authentication required.");
       return;
     }
+    if (activeUser.role === "VIEWER") {
+      alert("🔒 Access Denied: Viewer accounts have read-only access and cannot alter ticket status.");
+      return;
+    }
     if (activeUser.role === "USER") {
       alert("🔒 Access Denied: End users / reporters cannot alter technical workflow status.");
       return;
@@ -3038,6 +3076,11 @@ export default function WorkMateEnterpriseApp() {
       alert("⚠️ Please sign in with your email and password first to post updates.");
       setAuthTab("login");
       setIsAuthModalOpen(true);
+      return;
+    }
+
+    if (activeUser.role === "VIEWER") {
+      alert("🔒 Access Denied: Viewer accounts have read-only access and cannot post comments.");
       return;
     }
 
@@ -3297,16 +3340,38 @@ export default function WorkMateEnterpriseApp() {
     let matchesRoleScope = true;
 
     if (activeUser) {
-      if (!isSuperAdmin) {
-        // Particular user login (e.g., Aashutosh, Ravi, or any regular user/engineer):
-        // STRICTLY show only tickets assigned to this user OR reported by this user!
+      if (activeUser.role === "VIEWER") {
+        // VIEWER role: Read-only access STRICTLY limited to tickets assigned to their project/squad or assigned to them!
+        const userDept = (activeUser.department || "").trim().toLowerCase();
+        const isGlobal = userDept.includes("all engineering squads") || userDept.includes("global");
+
+        if (isGlobal) {
+          matchesRoleScope = true;
+        } else {
+          const ticketDept = (iss.department || "").trim().toLowerCase();
+          const ticketAsset = (iss.serviceAsset?.name || "").trim().toLowerCase();
+          const isAssignedToUser = iss.assigneeId === activeUser.id;
+          const isReportedByUser = iss.reporterId === activeUser.id;
+          const matchesProjectOrDept = Boolean(userDept && (ticketDept === userDept || ticketAsset === userDept));
+
+          matchesRoleScope = matchesProjectOrDept || isAssignedToUser || isReportedByUser;
+        }
+      } else if (!isSuperAdmin) {
+        // Particular user login (e.g., Software Engineer, Reporter):
+        // Show tickets assigned to this user, reported by this user, OR matching their assigned project / squad
+        const userDept = (activeUser.department || "").trim().toLowerCase();
+        const isGlobal = userDept.includes("all engineering squads") || userDept.includes("global");
+        const ticketDept = (iss.department || "").trim().toLowerCase();
+        const ticketAsset = (iss.serviceAsset?.name || "").trim().toLowerCase();
+        const matchesProjectOrDept = Boolean(userDept && (ticketDept === userDept || ticketAsset === userDept));
+
         if (roleScopeFilter === "MY_ASSIGNED") {
           matchesRoleScope = iss.assigneeId === activeUser.id;
         } else if (roleScopeFilter === "MY_REPORTED") {
           matchesRoleScope = iss.reporterId === activeUser.id;
         } else {
-          // Default: Only tickets where user is assignee or reporter
-          matchesRoleScope = iss.assigneeId === activeUser.id || iss.reporterId === activeUser.id;
+          // Default: Only tickets where user is assignee, reporter, or in the assigned squad/project
+          matchesRoleScope = iss.assigneeId === activeUser.id || iss.reporterId === activeUser.id || (!isGlobal && matchesProjectOrDept);
         }
       } else {
         // SuperAdmin / Admin:
@@ -3334,6 +3399,13 @@ export default function WorkMateEnterpriseApp() {
   // Filtered Tasks (Supports Enterprise Role Scoping: Non-superadmin only sees their own work)
   const filteredTasks = tasks.filter((task) => {
     if (!activeUser) return true;
+    if (activeUser.role === "VIEWER") {
+      const isOwner = task.ownerId === activeUser.id;
+      const isLinkedToVisibleIssue = Boolean(
+        task.issueId && filteredIssues.some((i) => i.id === task.issueId)
+      );
+      return isOwner || isLinkedToVisibleIssue;
+    }
     if (isSuperAdmin) return true;
     const isOwner = task.ownerId === activeUser.id;
     const isLinkedToMyIssue = Boolean(
@@ -3381,13 +3453,15 @@ export default function WorkMateEnterpriseApp() {
         <div className="header-actions">
           {/* Operational Primary Actions */}
           <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-            <button
-              className="btn btn-primary"
-              style={{ height: "32px", padding: "0 12px", fontSize: "12px", fontWeight: "600", whiteSpace: "nowrap" }}
-              onClick={() => setIsNewTicketOpen(true)}
-            >
-              + New Ticket
-            </button>
+            {activeUser?.role !== "VIEWER" && (
+              <button
+                className="btn btn-primary"
+                style={{ height: "32px", padding: "0 12px", fontSize: "12px", fontWeight: "600", whiteSpace: "nowrap" }}
+                onClick={() => setIsNewTicketOpen(true)}
+              >
+                + New Ticket
+              </button>
+            )}
 
             {/* Add User Button (Only SuperAdmin has user creation authority) */}
             {activeUser?.role === "SUPER_ADMIN" && (
@@ -3431,7 +3505,7 @@ export default function WorkMateEnterpriseApp() {
                 ) : (
                   <div
                     className="user-avatar"
-                    style={{ background: "#2563eb", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "11px", fontWeight: "700" }}
+                    style={{ background: activeUser.role === "VIEWER" ? "#7c3aed" : "#2563eb", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "11px", fontWeight: "700" }}
                     onClick={() => handleOpenEditProfile()}
                     title="Click to edit your photo & profile"
                   >
@@ -3442,9 +3516,10 @@ export default function WorkMateEnterpriseApp() {
                   <span className="user-name">{activeUser.name}</span>
                   <span
                     className="user-role-badge"
+                    style={activeUser.role === "VIEWER" ? { background: "rgba(147, 51, 234, 0.2)", color: "#c084fc", border: "1px solid rgba(147, 51, 234, 0.4)" } : undefined}
                     title={activeUser.department || "Operations"}
                   >
-                    {activeUser.role} · {activeUser.department || "Operations"}
+                    {activeUser.role === "VIEWER" ? "👁️ VIEWER" : activeUser.role} · {activeUser.department || "Operations"}
                   </span>
                 </div>
               </div>
@@ -3544,7 +3619,7 @@ export default function WorkMateEnterpriseApp() {
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <span style={{ fontSize: "20px" }}>
-              {switchNotification.role === "SUPER_ADMIN" ? "👑" : switchNotification.role === "MANAGER" ? "👔" : switchNotification.role === "ENGINEER" ? "🛠️" : "👤"}
+              {switchNotification.role === "SUPER_ADMIN" ? "👑" : switchNotification.role === "MANAGER" ? "👔" : switchNotification.role === "ENGINEER" ? "🛠️" : switchNotification.role === "VIEWER" ? "👁️" : "👤"}
             </span>
             <div>
               <div style={{ fontSize: "13px", fontWeight: "700", color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
@@ -3558,7 +3633,9 @@ export default function WorkMateEnterpriseApp() {
                     ? `Manager permissions (${switchNotification.department || "Operations"}): Can reassign and review tickets.`
                     : switchNotification.role === "ENGINEER"
                       ? `Engineer permissions (${switchNotification.department || "Engineering"}): Can resolve assigned technical tickets.`
-                      : "User permissions: Can create tickets and track personal submissions."}
+                      : switchNotification.role === "VIEWER"
+                        ? `Viewer permissions (${switchNotification.department || "Project"}): Read-only view of assigned project tickets. Editing, punches, and exports are disabled.`
+                        : "User permissions: Can create tickets and track personal submissions."}
               </div>
             </div>
           </div>
@@ -4038,28 +4115,32 @@ export default function WorkMateEnterpriseApp() {
                 </button>
               )}
 
-              <button
-                className="btn btn-secondary"
-                style={{
-                  padding: "7px 12px",
-                  fontSize: "12px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "rgba(30, 58, 138, 0.25)",
-                  border: "1px solid rgba(59, 130, 246, 0.4)",
-                  color: "#93c5fd",
-                  fontWeight: "600",
-                }}
-                onClick={handleExportTicketsExcel}
-                title="Export tickets to styled Excel (.xlsx) with colorful formatted headings"
-              >
-                <span>📊</span> Export Excel (.xlsx)
-              </button>
+              {activeUser?.role !== "VIEWER" && (
+                <button
+                  className="btn btn-secondary"
+                  style={{
+                    padding: "7px 12px",
+                    fontSize: "12px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "rgba(30, 58, 138, 0.25)",
+                    border: "1px solid rgba(59, 130, 246, 0.4)",
+                    color: "#93c5fd",
+                    fontWeight: "600",
+                  }}
+                  onClick={handleExportTicketsExcel}
+                  title="Export tickets to styled Excel (.xlsx) with colorful formatted headings"
+                >
+                  <span>📊</span> Export Excel (.xlsx)
+                </button>
+              )}
 
-              <button className="btn btn-primary" onClick={() => setIsNewTicketOpen(true)}>
-                + New Ticket
-              </button>
+              {activeUser?.role !== "VIEWER" && (
+                <button className="btn btn-primary" onClick={() => setIsNewTicketOpen(true)}>
+                  + New Ticket
+                </button>
+              )}
             </div>
           </div>
 
@@ -4166,9 +4247,15 @@ export default function WorkMateEnterpriseApp() {
               <p style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "560px", margin: "0 auto 16px" }}>
                 All test tickets have been purged from the system. You have a fresh, production-ready queue. Click below to log real incident tickets linked to your dynamic projects.
               </p>
-              <button className="btn btn-primary" onClick={() => setIsNewTicketOpen(true)}>
-                + Log Incident Ticket
-              </button>
+              {activeUser?.role !== "VIEWER" ? (
+                <button className="btn btn-primary" onClick={() => setIsNewTicketOpen(true)}>
+                  + Log Incident Ticket
+                </button>
+              ) : (
+                <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                  👁️ Viewer Account: Read-only access to assigned squad / project tickets.
+                </div>
+              )}
             </div>
           )}
 
@@ -4380,43 +4467,47 @@ export default function WorkMateEnterpriseApp() {
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <button
-                  className="btn btn-secondary"
-                  style={{
-                    padding: "7px 12px",
-                    fontSize: "12px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    background: "rgba(30, 58, 138, 0.25)",
-                    border: "1px solid rgba(59, 130, 246, 0.4)",
-                    color: "#93c5fd",
-                    fontWeight: "600",
-                    cursor: "pointer",
-                  }}
-                  onClick={handleExportClosedTicketsExcel}
-                  title="Export closed tickets to styled Excel (.xlsx) with colorful formatted headings"
-                >
-                  <span>📊</span> Export Excel (.xlsx)
-                </button>
+                {activeUser?.role !== "VIEWER" && (
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <button
+                      className="btn btn-secondary"
+                      style={{
+                        padding: "7px 12px",
+                        fontSize: "12px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        background: "rgba(30, 58, 138, 0.25)",
+                        border: "1px solid rgba(59, 130, 246, 0.4)",
+                        color: "#93c5fd",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                      }}
+                      onClick={handleExportClosedTicketsExcel}
+                      title="Export closed tickets to styled Excel (.xlsx) with colorful formatted headings"
+                    >
+                      <span>📊</span> Export Excel (.xlsx)
+                    </button>
 
-                <button
-                  className="export-btn"
-                  onClick={handleExportClosedTicketsCsv}
-                  title="Export closed tickets and audit trail to CSV file (UTF-8 Excel format)"
-                >
-                  <span>📥</span> Export Closed Tickets (CSV)
-                </button>
+                    <button
+                      className="export-btn"
+                      onClick={handleExportClosedTicketsCsv}
+                      title="Export closed tickets and audit trail to CSV file (UTF-8 Excel format)"
+                    >
+                      <span>📥</span> Export Closed Tickets (CSV)
+                    </button>
 
-                <a
-                  href={`${API_BASE}/api/closed-tickets/export`}
-                  download={`WorkMate_Closed_Tickets_Report_${new Date().toISOString().slice(0, 10)}.csv`}
-                  className="btn btn-secondary"
-                  style={{ height: "34px", padding: "0 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none" }}
-                  title="Direct server CSV download from backend database"
-                >
-                  <span>🌐</span> Server CSV
-                </a>
+                    <a
+                      href={`${API_BASE}/api/closed-tickets/export`}
+                      download={`WorkMate_Closed_Tickets_Report_${new Date().toISOString().slice(0, 10)}.csv`}
+                      className="btn btn-secondary"
+                      style={{ height: "34px", padding: "0 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none" }}
+                      title="Direct server CSV download from backend database"
+                    >
+                      <span>🌐</span> Server CSV
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -4803,53 +4894,57 @@ export default function WorkMateEnterpriseApp() {
                   </>
                 )}
 
-                <button
-                  className="btn btn-secondary"
-                  style={{
-                    padding: "7px 12px",
-                    fontSize: "12px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    background: "rgba(16, 185, 129, 0.2)",
-                    border: "1px solid rgba(16, 185, 129, 0.4)",
-                    color: "#6ee7b7",
-                    fontWeight: "600",
-                    cursor: "pointer",
-                  }}
-                  onClick={handleExportAttendanceExcel}
-                  title="Export attendance records to styled Excel (.xlsx) with emerald theme and colorful status badges"
-                >
-                  <span>📊</span> Export Excel (.xlsx)
-                </button>
+              {activeUser?.role !== "VIEWER" && (
+                <>
+                  <button
+                    className="btn btn-secondary"
+                    style={{
+                      padding: "7px 12px",
+                      fontSize: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: "rgba(16, 185, 129, 0.2)",
+                      border: "1px solid rgba(16, 185, 129, 0.4)",
+                      color: "#6ee7b7",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                    }}
+                    onClick={handleExportAttendanceExcel}
+                    title="Export attendance records to styled Excel (.xlsx) with emerald theme and colorful status badges"
+                  >
+                    <span>📊</span> Export Excel (.xlsx)
+                  </button>
 
-                <a
-                  href={`${API_BASE}/api/attendance/export-excel?${!isSuperAdmin && activeUser ? `userId=${activeUser.id}&` : ""}${attendanceDateFilter ? `date=${attendanceDateFilter}` : ""}`}
-                  download={isSuperAdmin ? `WorkMate_Attendance_Report${attendanceDateFilter ? `_${attendanceDateFilter}` : ""}.xlsx` : `WorkMate_My_Attendance_${activeUser?.name?.replace(/\s+/g, "_")}.xlsx`}
-                  className="btn btn-secondary"
-                  style={{ height: "34px", padding: "0 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none", color: "#6ee7b7" }}
-                  title="Direct server-side Excel (.xlsx) download with emerald theme"
-                >
-                  <span>🌐</span> Server Excel (.xlsx)
-                </a>
+                  <a
+                    href={`${API_BASE}/api/attendance/export-excel?${!isSuperAdmin && activeUser ? `userId=${activeUser.id}&` : ""}${attendanceDateFilter ? `date=${attendanceDateFilter}` : ""}`}
+                    download={isSuperAdmin ? `WorkMate_Attendance_Report${attendanceDateFilter ? `_${attendanceDateFilter}` : ""}.xlsx` : `WorkMate_My_Attendance_${activeUser?.name?.replace(/\s+/g, "_")}.xlsx`}
+                    className="btn btn-secondary"
+                    style={{ height: "34px", padding: "0 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none", color: "#6ee7b7" }}
+                    title="Direct server-side Excel (.xlsx) download with emerald theme"
+                  >
+                    <span>🌐</span> Server Excel (.xlsx)
+                  </a>
 
-                <button
-                  className="export-btn"
-                  onClick={handleExportAttendanceCsv}
-                  title={isSuperAdmin ? "Export all staff attendance records to CSV" : "Export my personal attendance records to CSV"}
-                >
-                  <span>📥</span> {isSuperAdmin ? "Export Report (CSV)" : "Export My Records (CSV)"}
-                </button>
+                  <button
+                    className="export-btn"
+                    onClick={handleExportAttendanceCsv}
+                    title={isSuperAdmin ? "Export all staff attendance records to CSV" : "Export my personal attendance records to CSV"}
+                  >
+                    <span>📥</span> {isSuperAdmin ? "Export Report (CSV)" : "Export My Records (CSV)"}
+                  </button>
 
-                <a
-                  href={`${API_BASE}/api/attendance/export?${!isSuperAdmin && activeUser ? `userId=${activeUser.id}&` : ""}${attendanceDateFilter ? `date=${attendanceDateFilter}` : ""}`}
-                  download={isSuperAdmin ? `WorkMate_Attendance_Report${attendanceDateFilter ? `_${attendanceDateFilter}` : ""}.csv` : `WorkMate_My_Attendance_${activeUser?.name?.replace(/\s+/g, "_")}.csv`}
-                  className="btn btn-secondary"
-                  style={{ height: "34px", padding: "0 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none" }}
-                  title="Direct server-side CSV download"
-                >
-                  <span>🌐</span> Server CSV
-                </a>
+                  <a
+                    href={`${API_BASE}/api/attendance/export?${!isSuperAdmin && activeUser ? `userId=${activeUser.id}&` : ""}${attendanceDateFilter ? `date=${attendanceDateFilter}` : ""}`}
+                    download={isSuperAdmin ? `WorkMate_Attendance_Report${attendanceDateFilter ? `_${attendanceDateFilter}` : ""}.csv` : `WorkMate_My_Attendance_${activeUser?.name?.replace(/\s+/g, "_")}.csv`}
+                    className="btn btn-secondary"
+                    style={{ height: "34px", padding: "0 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none" }}
+                    title="Direct server-side CSV download"
+                  >
+                    <span>🌐</span> Server CSV
+                  </a>
+                </>
+              )}
 
                 <button
                   className="btn btn-secondary"
@@ -4978,6 +5073,27 @@ export default function WorkMateEnterpriseApp() {
 
                 {/* Punch Action Buttons */}
                 {activeUser ? (
+                  activeUser.role === "VIEWER" ? (
+                    <div style={{
+                      width: "100%",
+                      padding: "14px 18px",
+                      borderRadius: "10px",
+                      background: "rgba(148, 163, 184, 0.08)",
+                      border: "1px solid rgba(148, 163, 184, 0.25)",
+                      color: "#cbd5e1",
+                      fontSize: "13px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      marginTop: "6px"
+                    }}>
+                      <span style={{ fontSize: "22px" }}>👁️</span>
+                      <div>
+                        <strong style={{ color: "#fff", display: "block", marginBottom: "2px" }}>Viewer Account (Read-Only)</strong>
+                        Attendance logging and shift punches are disabled for your profile. You have viewing rights only.
+                      </div>
+                    </div>
+                  ) : (
                   <div style={{ display: "flex", gap: "10px", marginTop: "4px", flexWrap: "wrap", width: "100%" }}>
                     {(() => {
                       const isCurrentlyOnDuty = activeUser.shiftStatus === "ON_DUTY" || (myTodayPunchIn && (!myTodayPunchOut || new Date(myTodayPunchIn.timestamp) > new Date(myTodayPunchOut.timestamp)));
@@ -5048,6 +5164,7 @@ export default function WorkMateEnterpriseApp() {
                       );
                     })()}
                   </div>
+                  )
                 ) : (
                   <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
                     Please sign in above to mark your daily attendance punch.
@@ -5257,6 +5374,7 @@ export default function WorkMateEnterpriseApp() {
                     <option value="MANAGER">Manager</option>
                     <option value="ENGINEER">Engineer</option>
                     <option value="USER">User</option>
+                    <option value="VIEWER">Viewer</option>
                   </select>
                 )}
 
@@ -5752,8 +5870,8 @@ export default function WorkMateEnterpriseApp() {
                       </div>
 
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-                        <span className={`badge ${u.role === "SUPER_ADMIN" ? "badge-urgent" : u.role === "MANAGER" ? "badge-assigned" : "badge-medium"}`}>
-                          {u.role === "SUPER_ADMIN" ? "👑 SUPER_ADMIN" : u.role}
+                        <span className={`badge ${u.role === "SUPER_ADMIN" ? "badge-urgent" : u.role === "MANAGER" ? "badge-assigned" : u.role === "VIEWER" ? "badge-cat" : "badge-medium"}`}>
+                          {u.role === "SUPER_ADMIN" ? "👑 SUPER_ADMIN" : u.role === "VIEWER" ? "👁️ VIEWER" : u.role}
                         </span>
                         <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>{u.department || "Operations"}</span>
                       </div>
@@ -5801,6 +5919,7 @@ export default function WorkMateEnterpriseApp() {
                             <option value="ENGINEER">🛠️ Software Engineer</option>
                             <option value="ADMIN">🛡️ Operations Admin</option>
                             <option value="USER">👤 Reporter</option>
+                            <option value="VIEWER">👁️ Viewer (Read-Only)</option>
                           </select>
                         </div>
 
@@ -5843,30 +5962,32 @@ export default function WorkMateEnterpriseApp() {
                 {isSuperAdmin ? "Team Tasks" : `${activeUser?.name || "My"} Tasks`} ({filteredTasks.length})
               </h2>
               <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                <button
-                  className="btn btn-secondary"
-                  style={{
-                    padding: "7px 12px",
-                    fontSize: "12px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    background: "rgba(234, 88, 12, 0.2)",
-                    border: "1px solid rgba(249, 115, 22, 0.4)",
-                    color: "#fdba74",
-                    fontWeight: "600",
-                    cursor: "pointer",
-                  }}
-                  onClick={handleExportTasksExcel}
-                  title="Export tasks to styled Excel (.xlsx) with amber theme and colorful status badges"
-                >
-                  <span>📊</span> Export Excel (.xlsx)
-                </button>
-                {activeUser?.role !== "USER" ? (
+                {activeUser?.role !== "VIEWER" && (
+                  <button
+                    className="btn btn-secondary"
+                    style={{
+                      padding: "7px 12px",
+                      fontSize: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: "rgba(234, 88, 12, 0.2)",
+                      border: "1px solid rgba(249, 115, 22, 0.4)",
+                      color: "#fdba74",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                    }}
+                    onClick={handleExportTasksExcel}
+                    title="Export tasks to styled Excel (.xlsx) with amber theme and colorful status badges"
+                  >
+                    <span>📊</span> Export Excel (.xlsx)
+                  </button>
+                )}
+                {activeUser?.role !== "USER" && activeUser?.role !== "VIEWER" ? (
                   <button className="btn btn-primary" onClick={() => setIsNewTaskOpen(true)}>+ Add Task</button>
                 ) : (
                   <span style={{ fontSize: "12px", color: "var(--text-dim)", background: "var(--bg-surface)", padding: "4px 10px", borderRadius: "6px" }}>
-                    Tasks managed by staff
+                    {activeUser?.role === "VIEWER" ? "👁️ Read-Only Mode" : "Tasks managed by staff"}
                   </span>
                 )}
               </div>
@@ -5885,6 +6006,7 @@ export default function WorkMateEnterpriseApp() {
                         type="checkbox"
                         className="task-checkbox"
                         checked={task.status === "DONE"}
+                        disabled={activeUser?.role === "VIEWER"}
                         onChange={() => handleToggleTask(task)}
                       />
                       <div className="task-content-block">
@@ -5921,7 +6043,15 @@ export default function WorkMateEnterpriseApp() {
 
           <div className="sandbox-card">
             <h3 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "14px" }}>Create a Task</h3>
-            {activeUser?.role === "USER" ? (
+            {activeUser?.role === "VIEWER" ? (
+              <div style={{ textAlign: "center", padding: "28px 16px", background: "var(--bg-surface)", borderRadius: "8px", border: "1px solid var(--border-subtle)" }}>
+                <div style={{ fontSize: "28px", marginBottom: "8px" }}>👁️</div>
+                <div style={{ fontSize: "14px", fontWeight: "700", color: "#fff", marginBottom: "6px" }}>Read-Only Viewer Account</div>
+                <p style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.5" }}>
+                  Task creation and status toggling are disabled for Viewer accounts.
+                </p>
+              </div>
+            ) : activeUser?.role === "USER" ? (
               <div style={{ textAlign: "center", padding: "28px 16px", background: "var(--bg-surface)", borderRadius: "8px", border: "1px solid var(--border-subtle)" }}>
                 <div style={{ fontSize: "28px", marginBottom: "8px" }}>ℹ️</div>
                 <div style={{ fontSize: "14px", fontWeight: "700", color: "#fff", marginBottom: "6px" }}>Task Creation Restricted</div>
@@ -6422,9 +6552,11 @@ export default function WorkMateEnterpriseApp() {
                 <span style={{ fontSize: "12px", fontWeight: "700", color: "#93c5fd", display: "flex", alignItems: "center", gap: "6px" }}>
                   <span>✨</span> AI Analysis & Recommendations
                 </span>
-                <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "11px" }} onClick={() => handleRunAiTriageOnIssue(selectedIssue.id)} disabled={aiAnalyzing}>
-                  {aiAnalyzing ? "Analyzing..." : "Refresh Advice"}
-                </button>
+                {activeUser?.role !== "VIEWER" && (
+                  <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "11px" }} onClick={() => handleRunAiTriageOnIssue(selectedIssue.id)} disabled={aiAnalyzing}>
+                    {aiAnalyzing ? "Analyzing..." : "Refresh Advice"}
+                  </button>
+                )}
               </div>
 
               {selectedIssue.aiSummary && <div style={{ fontSize: "13px", color: "#f1f5f9", marginBottom: "10px" }}>{selectedIssue.aiSummary}</div>}
@@ -6442,17 +6574,19 @@ export default function WorkMateEnterpriseApp() {
               <div className="form-group" style={{ margin: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
                   <label className="form-label" style={{ margin: 0 }}>Status</label>
-                  {activeUser?.role === "USER" && (
-                    <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>Read-only</span>
+                  {(activeUser?.role === "USER" || activeUser?.role === "VIEWER") && (
+                    <span style={{ fontSize: "10px", color: activeUser?.role === "VIEWER" ? "var(--accent-cyan)" : "var(--text-dim)", fontWeight: "600" }}>
+                      {activeUser?.role === "VIEWER" ? "👁️ Read-Only Viewer" : "Read-only"}
+                    </span>
                   )}
                 </div>
                 <select
                   className="form-select"
                   value={selectedIssue.status}
-                  disabled={activeUser?.role === "USER"}
+                  disabled={activeUser?.role === "USER" || activeUser?.role === "VIEWER"}
                   onChange={(e) => handleUpdateStatus(selectedIssue.id, e.target.value as IssueStatus)}
-                  title={activeUser?.role === "USER" ? "Reporters cannot alter status directly" : "Update ticket status"}
-                  style={{ opacity: activeUser?.role === "USER" ? 0.7 : 1, cursor: activeUser?.role === "USER" ? "not-allowed" : "pointer" }}
+                  title={activeUser?.role === "VIEWER" ? "Viewer accounts have strictly read-only access" : activeUser?.role === "USER" ? "Reporters cannot alter status directly" : "Update ticket status"}
+                  style={{ opacity: (activeUser?.role === "USER" || activeUser?.role === "VIEWER") ? 0.7 : 1, cursor: (activeUser?.role === "USER" || activeUser?.role === "VIEWER") ? "not-allowed" : "pointer" }}
                 >
                   <option value="OPEN">Open</option>
                   <option value="ASSIGNED">Assigned</option>
@@ -6467,7 +6601,7 @@ export default function WorkMateEnterpriseApp() {
                 </select>
                 {/* One-Click Lifecycle Action Buttons */}
                 <div style={{ display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
-                  {selectedIssue.status !== "RESOLVED" && selectedIssue.status !== "CLOSED" && activeUser?.role !== "USER" && (
+                  {selectedIssue.status !== "RESOLVED" && selectedIssue.status !== "CLOSED" && activeUser?.role !== "USER" && activeUser?.role !== "VIEWER" && (
                     <button
                       type="button"
                       className="btn"
@@ -6489,7 +6623,7 @@ export default function WorkMateEnterpriseApp() {
                       <span>✓</span> Mark Resolved
                     </button>
                   )}
-                  {selectedIssue.status !== "CLOSED" && activeUser?.role !== "USER" && activeUser?.role !== "ENGINEER" && (
+                  {selectedIssue.status !== "CLOSED" && activeUser?.role !== "USER" && activeUser?.role !== "ENGINEER" && activeUser?.role !== "VIEWER" && (
                     <button
                       type="button"
                       className="btn"
@@ -6511,7 +6645,7 @@ export default function WorkMateEnterpriseApp() {
                       <span>📁</span> Close & Archive
                     </button>
                   )}
-                  {selectedIssue.status === "OPEN" && activeUser?.role !== "USER" && (
+                  {selectedIssue.status === "OPEN" && activeUser?.role !== "USER" && activeUser?.role !== "VIEWER" && (
                     <button
                       type="button"
                       className="btn"
@@ -6534,6 +6668,11 @@ export default function WorkMateEnterpriseApp() {
                     </button>
                   )}
                 </div>
+                {activeUser?.role === "VIEWER" && (
+                  <div style={{ fontSize: "11px", color: "var(--accent-cyan)", marginTop: "4px" }}>
+                    👁️ Viewer mode: Status editing and resolution workflows are disabled.
+                  </div>
+                )}
                 {activeUser?.role === "USER" && (
                   <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "4px" }}>
                     Status is updated by assigned staff or engineers.
@@ -6596,17 +6735,34 @@ export default function WorkMateEnterpriseApp() {
                 ))}
               </div>
 
-              <form onSubmit={handleAddComment} style={{ display: "flex", gap: "10px" }}>
-                <input
-                  type="text"
-                  className="form-input"
-                  style={{ flex: 1 }}
-                  placeholder="Post technical update or remediation notes..."
-                  value={newCommentText}
-                  onChange={(e) => setNewCommentText(e.target.value)}
-                />
-                <button className="btn btn-primary" type="submit" disabled={actionLoading}>Post</button>
-              </form>
+              {activeUser?.role === "VIEWER" ? (
+                <div style={{
+                  padding: "10px 14px",
+                  background: "rgba(59, 130, 246, 0.08)",
+                  border: "1px dashed rgba(59, 130, 246, 0.3)",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  color: "#93c5fd",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px"
+                }}>
+                  <span>👁️</span>
+                  <span>Viewing Mode: You have read-only privileges. Posting comments or updates is disabled.</span>
+                </div>
+              ) : (
+                <form onSubmit={handleAddComment} style={{ display: "flex", gap: "10px" }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    style={{ flex: 1 }}
+                    placeholder="Post technical update or remediation notes..."
+                    value={newCommentText}
+                    onChange={(e) => setNewCommentText(e.target.value)}
+                  />
+                  <button className="btn btn-primary" type="submit" disabled={actionLoading}>Post</button>
+                </form>
+              )}
             </div>
           </div>
         </div>
@@ -6861,11 +7017,16 @@ export default function WorkMateEnterpriseApp() {
                     onChange={(e) => setTicketForm({ ...ticketForm, department: e.target.value })}
                   >
                     <option value="">✨ Auto-Assign with AI</option>
+                    <option value="Softech Solution">💻 Softech Solution</option>
                     <option value="Backend & Core APIs">Backend & Core APIs</option>
                     <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
                     <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
                     <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
                     <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
+                    <option value="Information Security & SecOps">Information Security & SecOps</option>
+                    {services.filter(s => !["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps"].includes(s.name)).map(s => (
+                      <option key={s.id} value={s.name}>📦 {s.name}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -7051,6 +7212,12 @@ export default function WorkMateEnterpriseApp() {
                       title: "Reporter / Developer",
                       desc: "Submit bug tickets, track status, post comments, follow incident progress.",
                     },
+                    {
+                      role: "VIEWER",
+                      icon: "👁️",
+                      title: "Viewer / Read-Only",
+                      desc: "Strict read-only access to assigned squad/project tickets. No editing, attendance, or exports.",
+                    },
                   ].map((r) => (
                     <div
                       key={r.role}
@@ -7063,7 +7230,7 @@ export default function WorkMateEnterpriseApp() {
                           department: isSuperAdmin
                             ? "All Engineering Squads (Global)"
                             : userForm.department === "All Engineering Squads (Global)"
-                              ? "Backend & Core APIs"
+                              ? "Softech Solution"
                               : userForm.department,
                         });
                       }}
@@ -7083,7 +7250,7 @@ export default function WorkMateEnterpriseApp() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div className="form-group">
                   <label className="form-label" style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Engineering Squad / Department</span>
+                    <span>Engineering Squad / Project</span>
                     {userForm.role === "SUPER_ADMIN" && (
                       <span style={{ color: "var(--accent-cyan)", fontSize: "11px", fontWeight: "700" }}>
                         👑 Locked: All Squads (SuperAdmin)
@@ -7093,7 +7260,13 @@ export default function WorkMateEnterpriseApp() {
                   <select
                     className="form-select"
                     value={userForm.role === "SUPER_ADMIN" ? "All Engineering Squads (Global)" : userForm.department}
-                    onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
+                    onChange={(e) => {
+                      if (e.target.value === "__CUSTOM__") {
+                        setUserForm({ ...userForm, department: "" });
+                      } else {
+                        setUserForm({ ...userForm, department: e.target.value });
+                      }
+                    }}
                     disabled={userForm.role === "SUPER_ADMIN"}
                     style={{
                       opacity: userForm.role === "SUPER_ADMIN" ? 0.6 : 1,
@@ -7106,13 +7279,31 @@ export default function WorkMateEnterpriseApp() {
                         🌐 All Engineering Squads (Global / Cross-Functional)
                       </option>
                     )}
+                    <option value="Softech Solution">💻 Softech Solution</option>
                     <option value="Backend & Core APIs">Backend & Core APIs</option>
                     <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
                     <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
                     <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
                     <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
                     <option value="Information Security & SecOps">Information Security & SecOps</option>
+                    {services.filter(s => !["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps"].includes(s.name)).map(s => (
+                      <option key={s.id} value={s.name}>📦 {s.name}</option>
+                    ))}
+                    {userForm.department && !["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps", "All Engineering Squads (Global)"].includes(userForm.department) && (
+                      <option value={userForm.department}>📌 {userForm.department} (Custom Project)</option>
+                    )}
+                    <option value="__CUSTOM__">✏️ Other / Custom Project Name...</option>
                   </select>
+                  {userForm.role !== "SUPER_ADMIN" && (!["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps"].includes(userForm.department) || userForm.department === "") && (
+                    <input
+                      type="text"
+                      className="form-input"
+                      style={{ marginTop: "6px" }}
+                      placeholder="Type custom project / squad name (e.g. Softech Solution)..."
+                      value={userForm.department}
+                      onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
+                    />
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -7731,6 +7922,12 @@ export default function WorkMateEnterpriseApp() {
                           title: "Reporter / Developer",
                           desc: "Submit bug tickets, track status, post comments, follow incident progress.",
                         },
+                        {
+                          role: "VIEWER",
+                          icon: "👁️",
+                          title: "Viewer / Read-Only",
+                          desc: "Strict read-only access to assigned squad/project tickets. No editing, attendance, or exports.",
+                        },
                       ].map((r) => (
                         <div
                           key={r.role}
@@ -7743,7 +7940,7 @@ export default function WorkMateEnterpriseApp() {
                               department: isSuperAdmin
                                 ? "All Engineering Squads (Global)"
                                 : userForm.department === "All Engineering Squads (Global)"
-                                  ? "Backend & Core APIs"
+                                  ? "Softech Solution"
                                   : userForm.department,
                             });
                           }}
@@ -7763,7 +7960,7 @@ export default function WorkMateEnterpriseApp() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                     <div className="form-group">
                       <label className="form-label" style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span>Engineering Squad / Department</span>
+                        <span>Engineering Squad / Project</span>
                         {userForm.role === "SUPER_ADMIN" && (
                           <span style={{ color: "var(--accent-cyan)", fontSize: "11px", fontWeight: "700" }}>
                             👑 Locked: All Squads (SuperAdmin)
@@ -7773,7 +7970,13 @@ export default function WorkMateEnterpriseApp() {
                       <select
                         className="form-select"
                         value={userForm.role === "SUPER_ADMIN" ? "All Engineering Squads (Global)" : userForm.department}
-                        onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
+                        onChange={(e) => {
+                          if (e.target.value === "__CUSTOM__") {
+                            setUserForm({ ...userForm, department: "" });
+                          } else {
+                            setUserForm({ ...userForm, department: e.target.value });
+                          }
+                        }}
                         disabled={userForm.role === "SUPER_ADMIN"}
                         style={{
                           opacity: userForm.role === "SUPER_ADMIN" ? 0.6 : 1,
@@ -7786,13 +7989,31 @@ export default function WorkMateEnterpriseApp() {
                             🌐 All Engineering Squads (Global / Cross-Functional)
                           </option>
                         )}
+                        <option value="Softech Solution">💻 Softech Solution</option>
                         <option value="Backend & Core APIs">Backend & Core APIs</option>
                         <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
                         <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
                         <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
                         <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
                         <option value="Information Security & SecOps">Information Security & SecOps</option>
+                        {services.filter(s => !["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps"].includes(s.name)).map(s => (
+                          <option key={s.id} value={s.name}>📦 {s.name}</option>
+                        ))}
+                        {userForm.department && !["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps", "All Engineering Squads (Global)"].includes(userForm.department) && (
+                          <option value={userForm.department}>📌 {userForm.department} (Custom Project)</option>
+                        )}
+                        <option value="__CUSTOM__">✏️ Other / Custom Project Name...</option>
                       </select>
+                      {userForm.role !== "SUPER_ADMIN" && (!["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps"].includes(userForm.department) || userForm.department === "") && (
+                        <input
+                          type="text"
+                          className="form-input"
+                          style={{ marginTop: "6px" }}
+                          placeholder="Type custom project / squad name (e.g. Softech Solution)..."
+                          value={userForm.department}
+                          onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
+                        />
+                      )}
                       {userForm.role === "SUPER_ADMIN" && (
                         <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
                           SuperAdmins automatically oversee all engineering squads across the entire platform.

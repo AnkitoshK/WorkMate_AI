@@ -118,6 +118,11 @@ router.get("/", async (req, res, next) => {
 // GET /api/closed-tickets/export - Download full CSV/Excel report of closed tickets
 router.get("/export", async (req, res, next) => {
   try {
+    const requesterRole = (req.query.requesterRole || req.headers["x-user-role"]) as string;
+    if (requesterRole === "VIEWER") {
+      return res.status(403).json({ error: "Access Denied: Viewer accounts do not have permission to download closed ticket reports." });
+    }
+
     const { department, category } = req.query;
     const where: any = {};
     if (department && department !== "ALL") where.department = String(department);

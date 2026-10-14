@@ -79,6 +79,11 @@ router.get("/:id", async (req, res, next) => {
 
 // POST /api/issues
 router.post("/", async (req, res, next) => {
+  const requesterRole = (req.body.requesterRole || req.headers["x-user-role"]) as string;
+  if (requesterRole === "VIEWER") {
+    return res.status(403).json({ error: "Access Denied: Viewer accounts have read-only access and cannot create tickets." });
+  }
+
   console.log("📥 [POST /api/issues] Received ticket creation payload:", req.body);
   const parsed = createIssueSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -101,6 +106,11 @@ router.post("/", async (req, res, next) => {
 
 // PATCH /api/issues/:id
 router.patch("/:id", async (req, res, next) => {
+  const requesterRole = (req.body.requesterRole || req.headers["x-user-role"]) as string;
+  if (requesterRole === "VIEWER") {
+    return res.status(403).json({ error: "Access Denied: Viewer accounts have read-only access and cannot edit tickets." });
+  }
+
   const parsed = updateIssueSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid ticket update", details: parsed.error.flatten() });
@@ -116,6 +126,11 @@ router.patch("/:id", async (req, res, next) => {
 
 // DELETE /api/issues/:id
 router.delete("/:id", async (req, res, next) => {
+  const requesterRole = (req.body?.requesterRole || req.headers["x-user-role"] || req.query.requesterRole) as string;
+  if (requesterRole === "VIEWER") {
+    return res.status(403).json({ error: "Access Denied: Viewer accounts have read-only access and cannot delete tickets." });
+  }
+
   try {
     await IssueService.deleteIssue(req.params.id);
     res.status(204).end();
@@ -136,6 +151,11 @@ router.delete("/", async (_req, res, next) => {
 
 // POST /api/issues/:id/comments
 router.post("/:id/comments", async (req, res, next) => {
+  const requesterRole = (req.body.requesterRole || req.headers["x-user-role"]) as string;
+  if (requesterRole === "VIEWER") {
+    return res.status(403).json({ error: "Access Denied: Viewer accounts have read-only access and cannot post comments." });
+  }
+
   const parsed = commentSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid comment", details: parsed.error.flatten() });

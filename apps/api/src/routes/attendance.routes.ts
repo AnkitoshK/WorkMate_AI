@@ -160,6 +160,12 @@ router.post("/punch", async (req, res, next) => {
       return res.status(404).json({ error: "Employee account not found" });
     }
 
+    if (user.role === "VIEWER") {
+      return res.status(403).json({
+        error: "Access Denied: Viewer accounts have read-only permissions and are not authorized to mark attendance punches.",
+      });
+    }
+
     const clientTimezone = (req.headers["x-timezone"] || req.query.timeZone || req.body?.timeZone) as string || "Asia/Kolkata";
     const now = new Date();
     const zoned = getZonedDateParts(now, clientTimezone);
@@ -391,6 +397,11 @@ router.post("/punch", async (req, res, next) => {
 // GET /api/attendance/export - Export attendance logs to CSV (supports ?date=YYYY-MM-DD or date range)
 router.get("/export", async (req, res, next) => {
   try {
+    const requesterRole = (req.query.requesterRole || req.headers["x-user-role"]) as string;
+    if (requesterRole === "VIEWER") {
+      return res.status(403).json({ error: "Access Denied: Viewer accounts do not have permission to download attendance reports." });
+    }
+
     const { date, role, department, userId } = req.query;
     const where: any = {};
     if (role && role !== "ALL") where.role = String(role);
@@ -550,7 +561,12 @@ router.get("/export", async (req, res, next) => {
 // GET /api/attendance/export-excel - Styled Excel (.xlsx) export with colorful formatted headings
 router.get("/export-excel", async (req, res, next) => {
   try {
-    const { userId, date } = req.query as { userId?: string; date?: string };
+    const requesterRole = (req.query.requesterRole || req.headers["x-user-role"]) as string;
+    if (requesterRole === "VIEWER") {
+      return res.status(403).json({ error: "Access Denied: Viewer accounts do not have permission to download attendance reports." });
+    }
+
+    const { userId, date } = req.query as { userId?: string; date?: string; requesterRole?: string };
 
     const where: any = {};
     if (userId) {

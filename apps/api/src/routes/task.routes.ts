@@ -57,6 +57,11 @@ router.get("/:id", async (req, res, next) => {
 
 // POST /api/tasks
 router.post("/", async (req, res, next) => {
+  const requesterRole = (req.body?.requesterRole || req.headers["x-user-role"]) as string;
+  if (requesterRole === "VIEWER") {
+    return res.status(403).json({ error: "Access Denied: Viewer accounts have read-only access and cannot create tasks." });
+  }
+
   const parsed = createTaskSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid task data", details: parsed.error.flatten() });
@@ -77,6 +82,11 @@ router.post("/", async (req, res, next) => {
 
 // PATCH /api/tasks/:id
 router.patch("/:id", async (req, res, next) => {
+  const requesterRole = (req.body?.requesterRole || req.headers["x-user-role"]) as string;
+  if (requesterRole === "VIEWER") {
+    return res.status(403).json({ error: "Access Denied: Viewer accounts have read-only access and cannot edit tasks." });
+  }
+
   const parsed = updateTaskSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid task update", details: parsed.error.flatten() });
@@ -96,6 +106,11 @@ router.patch("/:id", async (req, res, next) => {
 
 // DELETE /api/tasks/:id
 router.delete("/:id", async (req, res, next) => {
+  const requesterRole = (req.body?.requesterRole || req.headers["x-user-role"] || req.query.requesterRole) as string;
+  if (requesterRole === "VIEWER") {
+    return res.status(403).json({ error: "Access Denied: Viewer accounts have read-only access and cannot delete tasks." });
+  }
+
   try {
     await TaskService.deleteTask(req.params.id);
     res.status(204).end();

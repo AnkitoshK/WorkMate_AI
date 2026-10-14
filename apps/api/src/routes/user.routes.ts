@@ -10,7 +10,7 @@ const router = Router();
 
 const roleEnum = z.preprocess(
   (val) => (val === "TECHNICIAN" ? "ENGINEER" : val),
-  z.enum(["SUPER_ADMIN", "ADMIN", "MANAGER", "ENGINEER", "USER"])
+  z.enum(["SUPER_ADMIN", "ADMIN", "MANAGER", "ENGINEER", "USER", "VIEWER"])
 );
 
 const createUserSchema = z.object({
