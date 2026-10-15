@@ -94,6 +94,7 @@ export class IssueService {
     assigneeId?: string | null;
     monitorUserId?: string | null;
     runAiTriage?: boolean;
+    postAiComment?: boolean;
   }) {
 
     let aiSummary = undefined;
@@ -240,8 +241,8 @@ export class IssueService {
       },
     });
 
-    // If AI summary exists, create an initial AI Copilot advisory comment
-    if (aiSummary) {
+    // If AI summary exists and user specifically enabled auto-posting AI advisory comment
+    if (aiSummary && data.postAiComment === true) {
       await prisma.comment.create({
         data: {
           issueId: issue.id,
@@ -393,7 +394,7 @@ export class IssueService {
     });
   }
 
-  static async runAiTriageOnIssue(issueId: string) {
+  static async runAiTriageOnIssue(issueId: string, postComment: boolean = false) {
     const issue = await prisma.issue.findUnique({ where: { id: issueId } });
     if (!issue) throw new Error("Issue not found");
 
@@ -416,21 +417,91 @@ export class IssueService {
         serviceAssetId: issue.serviceAssetId || triage.detectedServiceAssetId,
       },
       include: {
-        reporter: { select: { id: true, name: true, email: true, role: true, avatar: true } },
-        assignee: { select: { id: true, name: true, email: true, role: true, avatar: true } },
+        reporter: { select: { id: true, name: true, email: true, role: true, avatar: true, department: true } },
+        assignee: { select: { id: true, name: true, email: true, role: true, avatar: true, department: true } },
         serviceAsset: true,
+        comments: {
+          include: {
+            author: { select: { id: true, name: true, email: true, role: true, avatar: true } },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+        tasks: {
+          include: {
+            owner: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        },
       },
     });
 
-    await prisma.comment.create({
-      data: {
-        issueId,
-        authorId: issue.reporterId,
-        isAiGenerated: true,
-        content: `⚡ WorkMate AI Re-Triage:\n• Hypothesis: ${triage.rootCause}\n• Next Actions:\n${triage.suggestedAction}`,
-      },
-    });
+    if (postComment) {
+      await prisma.comment.create({
+        data: {
+          issueId,
+          authorId: issue.reporterId,
+          isAiGenerated: true,
+          content: `⚡ WorkMate AI Re-Triage:\n• Hypothesis: ${triage.rootCause}\n• Next Actions:\n${triage.suggestedAction}`,
+        },
+      });
+    }
 
     return updated;
+  }
+
+  static async clearAiDiagnosis(issueId: string, clearComments: boolean = false) {
+    if (clearComments) {
+      await prisma.comment.deleteMany({
+        where: { issueId, isAiGenerated: true },
+      });
+    }
+
+    return prisma.issue.update({
+      where: { id: issueId },
+      data: {
+        aiSummary: null,
+        aiSuggestedAction: null,
+        aiRootCause: null,
+        aiConfidence: null,
+      },
+      include: {
+        reporter: { select: { id: true, name: true, email: true, role: true, avatar: true, department: true } },
+        assignee: { select: { id: true, name: true, email: true, role: true, avatar: true, department: true } },
+        serviceAsset: true,
+        comments: {
+          include: {
+            author: { select: { id: true, name: true, email: true, role: true, avatar: true } },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+        tasks: {
+          include: {
+            owner: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        },
+      },
+    });
+  }
+
+  static async deleteComment(commentId: string) {
+    return prisma.comment.delete({ where: { id: commentId } });
+  }
+
+  static async deleteAiCommentsForIssue(issueId: string) {
+    return prisma.comment.deleteMany({
+      where: {
+        issueId,
+        isAiGenerated: true,
+      },
+    });
+  }
+
+  static async purgeAllAiComments() {
+    return prisma.comment.deleteMany({
+      where: {
+        isAiGenerated: true,
+      },
+    });
   }
 }

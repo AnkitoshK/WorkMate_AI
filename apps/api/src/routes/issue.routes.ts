@@ -26,6 +26,7 @@ const createIssueSchema = z.object({
   assigneeId: emptyToNull,
   monitorUserId: emptyToNull,
   runAiTriage: z.boolean().optional(),
+  postAiComment: z.boolean().optional(),
 });
 
 const updateIssueSchema = z.object({
@@ -128,6 +129,21 @@ router.patch("/:id", async (req, res, next) => {
   }
 });
 
+// DELETE /api/issues/ai-comments/purge-all (SuperAdmin purge)
+router.delete("/ai-comments/purge-all", async (req, res, next) => {
+  const requesterRole = (req.body?.requesterRole || req.headers["x-user-role"] || req.query.requesterRole) as string;
+  if (requesterRole !== "SUPER_ADMIN" && requesterRole !== "ADMIN") {
+    return res.status(403).json({ error: "Access Denied: Only SuperAdmin and Admins can purge system AI comments." });
+  }
+
+  try {
+    const result = await IssueService.purgeAllAiComments();
+    res.json({ success: true, count: result.count, message: `Purged ${result.count} AI bot comments across all tickets.` });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // DELETE /api/issues/:id
 router.delete("/:id", async (req, res, next) => {
   const requesterRole = (req.body?.requesterRole || req.headers["x-user-role"] || req.query.requesterRole) as string;
@@ -181,8 +197,50 @@ router.post("/:id/comments", async (req, res, next) => {
 // POST /api/issues/:id/ai-triage
 router.post("/:id/ai-triage", async (req, res, next) => {
   try {
-    const updated = await IssueService.runAiTriageOnIssue(req.params.id);
+    const postComment = req.body?.postComment === true;
+    const updated = await IssueService.runAiTriageOnIssue(req.params.id, postComment);
     res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/issues/:id/clear-ai
+router.post("/:id/clear-ai", async (req, res, next) => {
+  try {
+    const clearComments = req.body?.clearComments === true;
+    const updated = await IssueService.clearAiDiagnosis(req.params.id, clearComments);
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/issues/:id/comments/:commentId
+router.delete("/:id/comments/:commentId", async (req, res, next) => {
+  const requesterRole = (req.body?.requesterRole || req.headers["x-user-role"] || req.query.requesterRole) as string;
+  if (requesterRole === "VIEWER") {
+    return res.status(403).json({ error: "Access Denied: Viewer accounts have read-only access." });
+  }
+
+  try {
+    await IssueService.deleteComment(req.params.commentId);
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/issues/:id/ai-comments
+router.delete("/:id/ai-comments", async (req, res, next) => {
+  const requesterRole = (req.body?.requesterRole || req.headers["x-user-role"] || req.query.requesterRole) as string;
+  if (requesterRole === "VIEWER") {
+    return res.status(403).json({ error: "Access Denied: Viewer accounts have read-only access." });
+  }
+
+  try {
+    const result = await IssueService.deleteAiCommentsForIssue(req.params.id);
+    res.json({ success: true, count: result.count });
   } catch (error) {
     next(error);
   }

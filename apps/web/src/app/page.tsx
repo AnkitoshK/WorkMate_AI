@@ -872,6 +872,37 @@ export default function WorkMateEnterpriseApp() {
     assigneeId: "",
     monitorUserId: "",
     runAiTriage: true,
+    postAiComment: false,
+  });
+
+  // User AI Preferences (Persisted locally per browser / user)
+  const [showAiAnalysis, setShowAiAnalysis] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      return localStorage.getItem("wm_show_ai_analysis") !== "false";
+    } catch {
+      return true;
+    }
+  });
+
+  const [commentFilter, setCommentFilter] = useState<"ALL" | "USER_ONLY" | "AI_ONLY">(() => {
+    if (typeof window === "undefined") return "ALL";
+    try {
+      return (localStorage.getItem("wm_comment_filter") as any) || "ALL";
+    } catch {
+      return "ALL";
+    }
+  });
+
+  // SuperAdmin WorkMate AI System Governance Settings
+  const [superAdminAiSettings, setSuperAdminAiSettings] = useState(() => {
+    if (typeof window === "undefined") return { globalAiEnabled: true, autoPostBotComments: false, allowUserToggle: true };
+    try {
+      const stored = localStorage.getItem("wm_superadmin_ai_config");
+      return stored ? JSON.parse(stored) : { globalAiEnabled: true, autoPostBotComments: false, allowUserToggle: true };
+    } catch {
+      return { globalAiEnabled: true, autoPostBotComments: false, allowUserToggle: true };
+    }
   });
 
   // Form: New User / Registration
@@ -2736,6 +2767,7 @@ export default function WorkMateEnterpriseApp() {
           location: ticketForm.location.trim() || undefined,
           affectedUrl: ticketForm.affectedUrl.trim() || undefined,
           runAiTriage: ticketForm.runAiTriage,
+          postAiComment: ticketForm.postAiComment,
         }),
       });
 
@@ -2791,6 +2823,7 @@ export default function WorkMateEnterpriseApp() {
         assigneeId: "",
         monitorUserId: "",
         runAiTriage: true,
+        postAiComment: false,
       });
       await refreshAllData();
     } catch (err: any) {
@@ -3284,15 +3317,146 @@ export default function WorkMateEnterpriseApp() {
     }
   };
 
-  // AI Re-Triage
-  const handleRunAiTriageOnIssue = async (issueId: string) => {
+  // User AI Visibility & Filter Toggles
+  const handleToggleShowAiAnalysis = (show: boolean) => {
+    setShowAiAnalysis(show);
+    try {
+      localStorage.setItem("wm_show_ai_analysis", String(show));
+    } catch (e) {
+      console.warn(e);
+    }
+    triggerToast("info", show ? "AI Advice Visible" : "AI Advice Hidden", show ? "AI Analysis & Recommendations is now visible." : "AI Analysis box is now hidden for your view.", "GENERAL");
+  };
+
+  const handleSetCommentFilter = (filter: "ALL" | "USER_ONLY" | "AI_ONLY") => {
+    setCommentFilter(filter);
+    try {
+      localStorage.setItem("wm_comment_filter", filter);
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
+  const handleUpdateSuperAdminAiSettings = (key: string, val: boolean) => {
+    const updated = { ...superAdminAiSettings, [key]: val };
+    setSuperAdminAiSettings(updated);
+    try {
+      localStorage.setItem("wm_superadmin_ai_config", JSON.stringify(updated));
+    } catch (e) {
+      console.warn(e);
+    }
+    triggerToast("success", "AI Configuration Updated", `Setting "${key}" changed to ${val ? "Enabled" : "Disabled"}.`, "GENERAL");
+  };
+
+  // SuperAdmin / Admin Clear AI Telemetry
+  const handleClearAiDiagnosis = async (issueId: string) => {
+    if (!confirm("Clear AI analysis, hypotheses, and recommendations for this ticket?")) return;
     try {
       setAiAnalyzing(true);
-      const res = await fetch(`${API_BASE}/api/issues/${issueId}/ai-triage`, { method: "POST" });
+      const res = await fetch(`${API_BASE}/api/issues/${issueId}/clear-ai`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clearComments: false }),
+      });
       if (res.ok) {
         const updated = await res.json();
         setSelectedIssue(updated);
         await refreshAllData();
+        triggerToast("info", "AI Analysis Cleared", "The AI recommendations have been removed from this ticket.", "GENERAL", updated.ticketNumber);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAiAnalyzing(false);
+    }
+  };
+
+  // Delete Individual Comment (Staff/SuperAdmin)
+  const handleDeleteComment = async (issueId: string, commentId: string) => {
+    if (!confirm("Delete this comment from the ticket timeline?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/issues/${issueId}/comments/${commentId}`, {
+        method: "DELETE",
+        headers: {
+          "x-user-role": activeUser?.role || "USER",
+        },
+      });
+      if (res.ok) {
+        setSelectedIssue((prev) => (prev ? {
+          ...prev,
+          comments: prev.comments?.filter((c) => c.id !== commentId) || [],
+        } : null));
+        await refreshAllData();
+        triggerToast("info", "Comment Deleted", "Comment has been removed from the discussion thread.", "GENERAL");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // SuperAdmin Purge Bot Comments for Single Issue
+  const handlePurgeIssueAiComments = async (issueId: string) => {
+    if (!confirm("Remove all automated AI bot comments from this ticket?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/issues/${issueId}/ai-comments`, {
+        method: "DELETE",
+        headers: {
+          "x-user-role": activeUser?.role || "USER",
+        },
+      });
+      if (res.ok) {
+        setSelectedIssue((prev) => (prev ? {
+          ...prev,
+          comments: prev.comments?.filter((c) => !c.isAiGenerated) || [],
+        } : null));
+        await refreshAllData();
+        triggerToast("success", "Bot Comments Purged", "All automated AI comments have been deleted from this ticket.", "GENERAL");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // SuperAdmin Purge All Bot Comments Globally
+  const handlePurgeAllSystemAiComments = async () => {
+    if (!confirm("⚠️ SuperAdmin Master Action: Purge ALL automated AI bot comments across all tickets in the system?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/issues/ai-comments/purge-all`, {
+        method: "DELETE",
+        headers: {
+          "x-user-role": activeUser?.role || "SUPER_ADMIN",
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        await refreshAllData();
+        if (selectedIssue) {
+          await openTicketDetail(selectedIssue.id);
+        }
+        triggerToast("success", "System AI Comments Purged", data.message || "All bot comments purged successfully.", "GENERAL");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Failed to purge AI comments");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // AI Re-Triage
+  const handleRunAiTriageOnIssue = async (issueId: string) => {
+    try {
+      setAiAnalyzing(true);
+      const res = await fetch(`${API_BASE}/api/issues/${issueId}/ai-triage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postComment: false }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSelectedIssue(updated);
+        await refreshAllData();
+        triggerToast("success", "AI Triage Completed", "Updated analysis and root-cause suggestions for this ticket.", "GENERAL", updated.ticketNumber);
       }
     } catch (err) {
       console.error(err);
@@ -6740,6 +6904,104 @@ export default function WorkMateEnterpriseApp() {
             </p>
           </div>
 
+          {/* SuperAdmin WorkMate AI Master Governance Card (Visible to SUPER_ADMIN & ADMIN) */}
+          {(activeUser?.role === "SUPER_ADMIN" || activeUser?.role === "ADMIN") && (
+            <div style={{
+              background: "linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95))",
+              border: "1px solid rgba(168, 85, 247, 0.4)",
+              borderRadius: "12px",
+              padding: "16px 20px",
+              marginBottom: "24px",
+              boxShadow: "0 6px 20px rgba(0, 0, 0, 0.25)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "20px" }}>👑</span>
+                  <div>
+                    <h3 style={{ fontSize: "15px", fontWeight: "800", color: "#f8fafc", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span>SuperAdmin WorkMate AI Governance & Master Controls</span>
+                      <span className="badge" style={{ background: "rgba(168, 85, 247, 0.2)", color: "#d8b4fe", border: "1px solid rgba(168, 85, 247, 0.4)", fontSize: "10px" }}>
+                        SuperAdmin Authority
+                      </span>
+                    </h3>
+                    <p style={{ fontSize: "12px", color: "#94a3b8", margin: "2px 0 0" }}>
+                      Configure system-wide AI behavior, auto-comment defaults, and purge automated bot clutter.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={handlePurgeAllSystemAiComments}
+                  style={{
+                    background: "rgba(239, 68, 68, 0.15)",
+                    border: "1px solid rgba(239, 68, 68, 0.4)",
+                    color: "#fca5a5",
+                    fontSize: "12px",
+                    fontWeight: "600",
+                    padding: "6px 12px",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                  title="Remove all auto-generated bot comments across all tickets"
+                >
+                  <span>🧹 Purge All System AI Bot Comments</span>
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "12px" }}>
+                <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--border-subtle)", borderRadius: "8px", padding: "10px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <strong style={{ fontSize: "12.5px", color: "#e2e8f0" }}>Global AI Diagnostics</strong>
+                    <input
+                      type="checkbox"
+                      checked={superAdminAiSettings.globalAiEnabled}
+                      onChange={(e) => handleUpdateSuperAdminAiSettings("globalAiEnabled", e.target.checked)}
+                      style={{ width: "16px", height: "16px", accentColor: "var(--accent-primary)", cursor: "pointer" }}
+                    />
+                  </div>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                    Allow AI triage suggestions on ticket creation and detail views.
+                  </div>
+                </div>
+
+                <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--border-subtle)", borderRadius: "8px", padding: "10px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <strong style={{ fontSize: "12.5px", color: "#e2e8f0" }}>Auto-Post AI Comments</strong>
+                    <input
+                      type="checkbox"
+                      checked={superAdminAiSettings.autoPostBotComments}
+                      onChange={(e) => handleUpdateSuperAdminAiSettings("autoPostBotComments", e.target.checked)}
+                      style={{ width: "16px", height: "16px", accentColor: "var(--accent-primary)", cursor: "pointer" }}
+                    />
+                  </div>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                    Default setting for posting automated bot comments on new tickets.
+                  </div>
+                </div>
+
+                <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--border-subtle)", borderRadius: "8px", padding: "10px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <strong style={{ fontSize: "12.5px", color: "#e2e8f0" }}>User Discretion Visibility</strong>
+                    <input
+                      type="checkbox"
+                      checked={superAdminAiSettings.allowUserToggle}
+                      onChange={(e) => handleUpdateSuperAdminAiSettings("allowUserToggle", e.target.checked)}
+                      style={{ width: "16px", height: "16px", accentColor: "var(--accent-primary)", cursor: "pointer" }}
+                    />
+                  </div>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                    Allow users to show/hide AI advice and bot comments on tickets.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Interactive AI Operations Copilot (Deep Technical Advisor & Troubleshooting) */}
           <div className="ai-copilot-card">
             <div className="ai-copilot-header">
@@ -7256,28 +7518,128 @@ export default function WorkMateEnterpriseApp() {
               {selectedIssue.description}
             </div>
 
-            {/* AI Assistant Advice Box */}
-            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: "10px", padding: "16px 18px", marginBottom: "20px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-                <span style={{ fontSize: "12px", fontWeight: "700", color: "#93c5fd", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span>✨</span> AI Analysis & Recommendations
-                </span>
-                {activeUser?.role !== "VIEWER" && (
-                  <button className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "11px" }} onClick={() => handleRunAiTriageOnIssue(selectedIssue.id)} disabled={aiAnalyzing}>
-                    {aiAnalyzing ? "Analyzing..." : "Refresh Advice"}
-                  </button>
+            {/* AI Assistant Advice Box with User Toggle & SuperAdmin Controls */}
+            {!showAiAnalysis ? (
+              <div style={{
+                background: "rgba(15, 23, 42, 0.6)",
+                border: "1px dashed rgba(147, 197, 253, 0.3)",
+                borderRadius: "10px",
+                padding: "10px 16px",
+                marginBottom: "20px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "10px",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "var(--text-muted)" }}>
+                  <span>✨</span>
+                  <span>AI Analysis & Recommendations is <strong>hidden</strong> for your view.</span>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: "3px 10px", fontSize: "11px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                  onClick={() => handleToggleShowAiAnalysis(true)}
+                  title="Enable AI recommendations"
+                >
+                  <span>👁️</span> Show AI Advice
+                </button>
+              </div>
+            ) : (
+              <div style={{
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-subtle)",
+                borderRadius: "10px",
+                padding: "16px 18px",
+                marginBottom: "20px",
+                position: "relative",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "12px", fontWeight: "700", color: "#93c5fd", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span>✨</span> AI Analysis & Recommendations
+                    </span>
+                    {!selectedIssue.aiSummary && (
+                      <span style={{ fontSize: "10.5px", background: "rgba(255, 255, 255, 0.06)", color: "var(--text-dim)", padding: "1px 6px", borderRadius: "4px" }}>
+                        Not generated / Dismissed
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    {/* User direct toggle button */}
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: "4px 9px", fontSize: "11px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                      onClick={() => handleToggleShowAiAnalysis(false)}
+                      title="Hide AI recommendations for your view"
+                    >
+                      <span>👁️</span> Hide
+                    </button>
+
+                    {/* SuperAdmin & Admin Controls */}
+                    {(activeUser?.role === "SUPER_ADMIN" || activeUser?.role === "ADMIN") && selectedIssue.aiSummary && (
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{
+                          padding: "4px 9px",
+                          fontSize: "11px",
+                          background: "rgba(239, 68, 68, 0.12)",
+                          border: "1px solid rgba(239, 68, 68, 0.3)",
+                          color: "#fca5a5",
+                          borderRadius: "6px",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                        onClick={() => handleClearAiDiagnosis(selectedIssue.id)}
+                        disabled={aiAnalyzing}
+                        title="SuperAdmin: Permanently delete irrelevant AI analysis and root cause notes"
+                      >
+                        <span>🗑️ Clear Advice</span>
+                      </button>
+                    )}
+
+                    {activeUser?.role !== "VIEWER" && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ padding: "4px 10px", fontSize: "11px" }}
+                        onClick={() => handleRunAiTriageOnIssue(selectedIssue.id)}
+                        disabled={aiAnalyzing}
+                      >
+                        {aiAnalyzing ? "Analyzing..." : selectedIssue.aiSummary ? "⚡ Re-Run AI" : "⚡ Generate AI Advice"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {selectedIssue.aiSummary ? (
+                  <>
+                    <div style={{ fontSize: "13px", color: "#f1f5f9", marginBottom: "10px", lineHeight: "1.5" }}>
+                      {selectedIssue.aiSummary}
+                    </div>
+                    {selectedIssue.aiRootCause && (
+                      <div style={{ fontSize: "12px", color: "#93c5fd", marginBottom: "10px" }}>
+                        <strong>Possible Cause:</strong> {selectedIssue.aiRootCause}
+                      </div>
+                    )}
+                    {selectedIssue.aiSuggestedAction && (
+                      <div style={{ whiteSpace: "pre-line", fontSize: "12px", color: "#cbd5e1", background: "var(--bg-card)", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--border-subtle)", lineHeight: "1.6" }}>
+                        <strong>Recommended Steps:</strong>
+                        {"\n" + selectedIssue.aiSuggestedAction}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ fontSize: "12px", color: "var(--text-dim)", padding: "4px 0" }}>
+                    No AI analysis on this ticket. Use &ldquo;Generate AI Advice&rdquo; above if you need automated root-cause suggestions.
+                  </div>
                 )}
               </div>
-
-              {selectedIssue.aiSummary && <div style={{ fontSize: "13px", color: "#f1f5f9", marginBottom: "10px" }}>{selectedIssue.aiSummary}</div>}
-              {selectedIssue.aiRootCause && <div style={{ fontSize: "12px", color: "#93c5fd", marginBottom: "10px" }}><strong>Possible Cause:</strong> {selectedIssue.aiRootCause}</div>}
-              {selectedIssue.aiSuggestedAction && (
-                <div style={{ whiteSpace: "pre-line", fontSize: "12px", color: "#cbd5e1", background: "var(--bg-card)", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--border-subtle)" }}>
-                  <strong>Recommended Steps:</strong>
-                  {"\n" + selectedIssue.aiSuggestedAction}
-                </div>
-              )}
-            </div>
+            )}
 
             {/* Status & Assignment */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "20px" }}>
@@ -7427,23 +7789,182 @@ export default function WorkMateEnterpriseApp() {
 
             {/* Comments Thread */}
             <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px" }}>
-              <h3 style={{ fontSize: "14px", fontWeight: "700", marginBottom: "12px" }}>
-                Comments & Updates ({selectedIssue.comments?.length || 0})
-              </h3>
+              {(() => {
+                const allComments = selectedIssue.comments || [];
+                const humanComments = allComments.filter((c) => !c.isAiGenerated);
+                const aiComments = allComments.filter((c) => c.isAiGenerated);
+                const displayComments =
+                  commentFilter === "USER_ONLY"
+                    ? humanComments
+                    : commentFilter === "AI_ONLY"
+                    ? aiComments
+                    : allComments;
 
-              <div style={{ maxHeight: "180px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>
-                {selectedIssue.comments?.map((c) => (
-                  <div key={c.id} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: "8px", padding: "10px 12px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px", fontSize: "11px", color: "var(--text-dim)" }}>
-                      <span style={{ fontWeight: "700", color: c.isAiGenerated ? "#93c5fd" : "#fff" }}>
-                        {c.isAiGenerated ? "🤖 AI Assistant" : c.author?.name || "Staff"}
-                      </span>
-                      <span>{new Date(c.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                return (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                      <h3 style={{ fontSize: "14px", fontWeight: "700", margin: 0 }}>
+                        Comments & Updates ({displayComments.length})
+                      </h3>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        {/* User comment filter segment */}
+                        <div style={{
+                          display: "inline-flex",
+                          background: "rgba(255, 255, 255, 0.05)",
+                          padding: "2px",
+                          borderRadius: "6px",
+                          border: "1px solid var(--border-subtle)",
+                        }}>
+                          <button
+                            type="button"
+                            onClick={() => handleSetCommentFilter("ALL")}
+                            style={{
+                              background: commentFilter === "ALL" ? "var(--accent-primary)" : "transparent",
+                              color: commentFilter === "ALL" ? "#fff" : "var(--text-dim)",
+                              border: "none",
+                              padding: "3px 8px",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              fontWeight: "600",
+                              fontSize: "11px",
+                            }}
+                          >
+                            All ({allComments.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSetCommentFilter("USER_ONLY")}
+                            style={{
+                              background: commentFilter === "USER_ONLY" ? "var(--accent-primary)" : "transparent",
+                              color: commentFilter === "USER_ONLY" ? "#fff" : "var(--text-dim)",
+                              border: "none",
+                              padding: "3px 8px",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              fontWeight: "600",
+                              fontSize: "11px",
+                            }}
+                            title="Hide automated AI bot comments"
+                          >
+                            💬 Human Only ({humanComments.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSetCommentFilter("AI_ONLY")}
+                            style={{
+                              background: commentFilter === "AI_ONLY" ? "var(--accent-primary)" : "transparent",
+                              color: commentFilter === "AI_ONLY" ? "#fff" : "var(--text-dim)",
+                              border: "none",
+                              padding: "3px 8px",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              fontWeight: "600",
+                              fontSize: "11px",
+                            }}
+                            title="View only automated AI bot triage notes"
+                          >
+                            🤖 Bot ({aiComments.length})
+                          </button>
+                        </div>
+
+                        {/* SuperAdmin Purge Bot Comments on this ticket */}
+                        {(activeUser?.role === "SUPER_ADMIN" || activeUser?.role === "ADMIN") && aiComments.length > 0 && (
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => handlePurgeIssueAiComments(selectedIssue.id)}
+                            title="SuperAdmin: Delete all bot comments from this ticket thread"
+                            style={{
+                              background: "rgba(239, 68, 68, 0.12)",
+                              border: "1px solid rgba(239, 68, 68, 0.3)",
+                              color: "#fca5a5",
+                              padding: "3px 8px",
+                              fontSize: "11px",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            <span>🧹 Purge Bot Comments</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div style={{ fontSize: "13px", color: "#e2e8f0", whiteSpace: "pre-line" }}>{c.content}</div>
-                  </div>
-                ))}
-              </div>
+
+                    <div style={{ maxHeight: "190px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>
+                      {displayComments.length === 0 ? (
+                        <div style={{
+                          padding: "16px",
+                          textAlign: "center",
+                          color: "var(--text-dim)",
+                          fontSize: "12px",
+                          background: "var(--bg-surface)",
+                          borderRadius: "8px",
+                          border: "1px dashed var(--border-subtle)",
+                        }}>
+                          {commentFilter === "USER_ONLY"
+                            ? "No human team comments yet. (AI bot comments are filtered out)."
+                            : commentFilter === "AI_ONLY"
+                            ? "No automated AI bot triage comments on this ticket."
+                            : "No comments posted yet."}
+                        </div>
+                      ) : (
+                        displayComments.map((c) => (
+                          <div
+                            key={c.id}
+                            style={{
+                              background: c.isAiGenerated ? "rgba(30, 58, 138, 0.15)" : "var(--bg-surface)",
+                              border: c.isAiGenerated ? "1px solid rgba(96, 165, 250, 0.25)" : "1px solid var(--border-subtle)",
+                              borderRadius: "8px",
+                              padding: "10px 12px",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px", fontSize: "11px", color: "var(--text-dim)" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <span style={{ fontWeight: "700", color: c.isAiGenerated ? "#93c5fd" : "#fff" }}>
+                                  {c.isAiGenerated ? "🤖 AI Assistant" : c.author?.name || "Staff"}
+                                </span>
+                                {c.isAiGenerated && (
+                                  <span style={{ fontSize: "9px", background: "rgba(59, 130, 246, 0.2)", color: "#93c5fd", padding: "1px 5px", borderRadius: "3px" }}>
+                                    Automated Bot
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <span>{new Date(c.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                                {(activeUser?.role === "SUPER_ADMIN" || activeUser?.role === "ADMIN" || c.author?.id === activeUser?.id || c.isAiGenerated) && activeUser?.role !== "VIEWER" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteComment(selectedIssue.id, c.id)}
+                                    title={c.isAiGenerated ? "Delete this bot comment" : "Delete comment"}
+                                    style={{
+                                      background: "transparent",
+                                      border: "none",
+                                      color: "#f87171",
+                                      cursor: "pointer",
+                                      fontSize: "11px",
+                                      padding: "0 2px",
+                                      opacity: 0.7,
+                                    }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+                                    onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
+                                  >
+                                    🗑️
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: "13px", color: "#e2e8f0", whiteSpace: "pre-line" }}>{c.content}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
 
               {activeUser?.role === "VIEWER" ? (
                 <div style={{
@@ -8014,17 +8535,70 @@ export default function WorkMateEnterpriseApp() {
                 />
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "14px 0 20px" }}>
-                <input
-                  type="checkbox"
-                  id="autoAiCheck"
-                  checked={ticketForm.runAiTriage}
-                  onChange={(e) => setTicketForm({ ...ticketForm, runAiTriage: e.target.checked })}
-                  style={{ width: "18px", height: "18px", accentColor: "var(--accent-primary)" }}
-                />
-                <label htmlFor="autoAiCheck" style={{ fontSize: "13px", color: "var(--text-main)", cursor: "pointer" }}>
-                  ✨ Generate AI summary and recommended troubleshooting steps
-                </label>
+              {/* WORKMATE AI AUTOMATION & ADVISORY CONTROLS */}
+              <div style={{
+                background: "rgba(15, 23, 42, 0.65)",
+                border: "1px solid rgba(56, 189, 248, 0.2)",
+                borderRadius: "10px",
+                padding: "14px 16px",
+                margin: "16px 0 20px",
+              }}>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "10px",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.07)",
+                  paddingBottom: "8px",
+                }}>
+                  <span style={{ fontSize: "12px", fontWeight: "700", color: "#93c5fd", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>✨</span> WorkMate AI Analysis & Bot Controls
+                  </span>
+                  <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>User & Admin Configurable</span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {/* Option 1: AI Diagnostics */}
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      id="createTicketAiTriage"
+                      checked={ticketForm.runAiTriage}
+                      onChange={(e) => setTicketForm({ ...ticketForm, runAiTriage: e.target.checked })}
+                      style={{ marginTop: "3px", width: "17px", height: "17px", accentColor: "var(--accent-primary)", cursor: "pointer" }}
+                    />
+                    <div>
+                      <div style={{ fontSize: "13px", fontWeight: "600", color: "#f8fafc" }}>
+                        Generate AI Analysis & Recommendations
+                      </div>
+                      <div style={{ fontSize: "11.5px", color: "var(--text-muted)", marginTop: "2px", lineHeight: "1.4" }}>
+                        Synthesizes incident details to hypothesize root causes and generate step-by-step troubleshooting suggestions.
+                      </div>
+                    </div>
+                  </label>
+
+                  {/* Option 2: Post AI Comment in Thread */}
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      id="createTicketPostAiComment"
+                      checked={ticketForm.postAiComment}
+                      onChange={(e) => setTicketForm({ ...ticketForm, postAiComment: e.target.checked })}
+                      style={{ marginTop: "3px", width: "17px", height: "17px", accentColor: "var(--accent-primary)", cursor: "pointer" }}
+                    />
+                    <div>
+                      <div style={{ fontSize: "13px", fontWeight: "600", color: "#f8fafc", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>Post Automated AI Bot Comment in Thread</span>
+                        <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", background: ticketForm.postAiComment ? "rgba(59, 130, 246, 0.2)" : "rgba(255, 255, 255, 0.05)", color: ticketForm.postAiComment ? "#93c5fd" : "var(--text-dim)" }}>
+                          {ticketForm.postAiComment ? "Active" : "Disabled (Clean Thread)"}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "11.5px", color: "var(--text-muted)", marginTop: "2px", lineHeight: "1.4" }}>
+                        Uncheck this to keep Comments & Updates strictly for human team messages (avoids bot commentary).
+                      </div>
+                    </div>
+                  </label>
+                </div>
               </div>
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
