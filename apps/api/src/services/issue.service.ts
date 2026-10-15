@@ -26,11 +26,21 @@ export class IssueService {
     if (filters?.reporterId) where.reporterId = filters.reporterId;
 
     if (filters?.search) {
+      const trimmed = filters.search.trim();
+      const numMatch = trimmed.match(/\d+/);
+      const parsedNum = numMatch ? parseInt(numMatch[0], 10) : NaN;
+
       where.OR = [
-        { title: { contains: filters.search, mode: "insensitive" } },
-        { description: { contains: filters.search, mode: "insensitive" } },
-        { location: { contains: filters.search, mode: "insensitive" } },
-        { affectedUrl: { contains: filters.search, mode: "insensitive" } },
+        { title: { contains: trimmed, mode: "insensitive" } },
+        { description: { contains: trimmed, mode: "insensitive" } },
+        { component: { contains: trimmed, mode: "insensitive" } },
+        { department: { contains: trimmed, mode: "insensitive" } },
+        { location: { contains: trimmed, mode: "insensitive" } },
+        { affectedUrl: { contains: trimmed, mode: "insensitive" } },
+        { serviceAsset: { name: { contains: trimmed, mode: "insensitive" } } },
+        { assignee: { name: { contains: trimmed, mode: "insensitive" } } },
+        { reporter: { name: { contains: trimmed, mode: "insensitive" } } },
+        ...(!isNaN(parsedNum) ? [{ ticketNumber: parsedNum }] : []),
       ];
     }
 
@@ -42,7 +52,7 @@ export class IssueService {
         serviceAsset: true,
         _count: { select: { comments: true, tasks: true } },
       },
-      orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
+      orderBy: [{ createdAt: "desc" }],
     });
   }
 

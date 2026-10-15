@@ -256,6 +256,25 @@ const getComponentBadge = (comp?: string | null) => {
   return { label: comp, icon: "📦", color: "#93c5fd", bg: "rgba(147, 197, 253, 0.12)", border: "rgba(147, 197, 253, 0.3)" };
 };
 
+const formatTicketAge = (dateStr?: string | null): string => {
+  if (!dateStr) return "";
+  try {
+    const time = new Date(dateStr).getTime();
+    if (isNaN(time)) return "";
+    const diffSec = Math.floor((Date.now() - time) / 1000);
+    if (diffSec < 60) return "Just now";
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDays = Math.floor(diffHr / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return new Date(dateStr).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  } catch {
+    return "";
+  }
+};
+
 export interface ActionToast {
   id: string;
   type: "success" | "info" | "warning" | "error";
@@ -770,8 +789,11 @@ export default function WorkMateEnterpriseApp() {
     return null;
   });
 
-  // Filters
+  // Filters & Sorting
   const [searchQuery, setSearchQuery] = useState("");
+  const [ticketSortOrder, setTicketSortOrder] = useState<
+    "NEWEST" | "OLDEST" | "PRIORITY_DESC" | "TICKET_DESC" | "TICKET_ASC" | "RECENTLY_UPDATED"
+  >("NEWEST");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
@@ -1708,7 +1730,7 @@ export default function WorkMateEnterpriseApp() {
       triggerToast("error", "Action Prohibited", "Viewer accounts do not have permission to download reports.", "GENERAL");
       return;
     }
-    if (filteredIssues.length === 0) {
+    if (sortedIssues.length === 0) {
       triggerToast("warning", "No Tickets", "There are no tickets matching current filters to export.", "GENERAL");
       return;
     }
@@ -1727,7 +1749,7 @@ export default function WorkMateEnterpriseApp() {
       { header: "Updated At", key: "updatedAtStr", width: 22 },
     ];
 
-    const data = filteredIssues.map((iss) => ({
+    const data = sortedIssues.map((iss) => ({
       ticketNumber: `TIK-${String(iss.ticketNumber).padStart(3, "0")}`,
       title: iss.title,
       status: iss.status,
@@ -3471,13 +3493,56 @@ export default function WorkMateEnterpriseApp() {
 
   // Filtered Issues (Strictly scopes tickets: SuperAdmin sees all fleet; particular users see ONLY their own tickets & monitored projects)
   const filteredIssues = issues.filter((iss) => {
-    // 1. Text & Asset Search
-    const matchesSearch =
-      iss.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      iss.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (iss.component && iss.component.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (iss.location && iss.location.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (iss.serviceAsset?.name && iss.serviceAsset.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    // 1. Comprehensive Text, Asset, Person & ID Search
+    const q = searchQuery.trim().toLowerCase();
+    let matchesSearch = true;
+
+    if (q) {
+      const ticketNumStr = String(iss.ticketNumber || "");
+      const formattedTicketId = `#tik-${ticketNumStr.padStart(3, "0")}`.toLowerCase();
+      const rawTicketId = `tik-${ticketNumStr}`.toLowerCase();
+      const plainTicketId = `tik${ticketNumStr}`.toLowerCase();
+
+      // Designated monitor user details
+      const monId = iss.monitorUserId || iss.serviceAsset?.monitorUserId;
+      const monUser = monId ? users.find((u) => u.id === monId) : null;
+
+      const searchableParts: string[] = [
+        iss.title || "",
+        iss.description || "",
+        ticketNumStr,
+        formattedTicketId,
+        rawTicketId,
+        plainTicketId,
+        iss.id || "",
+        iss.component || "",
+        iss.department || "",
+        iss.category || "",
+        iss.priority || "",
+        iss.status || "",
+        iss.location || "",
+        iss.affectedUrl || "",
+        iss.resolutionNotes || "",
+        iss.aiSummary || "",
+        iss.aiRootCause || "",
+        iss.serviceAsset?.name || "",
+        iss.serviceAsset?.slug || "",
+        iss.serviceAsset?.type || "",
+        iss.serviceAsset?.department || "",
+        iss.assignee?.name || "",
+        iss.assignee?.email || "",
+        iss.reporter?.name || "",
+        iss.reporter?.email || "",
+        monUser?.name || "",
+        monUser?.email || "",
+      ];
+
+      // Multi-token search (each space-separated word in the query must match at least one attribute)
+      const queryTokens = q.split(/\s+/).filter(Boolean);
+      matchesSearch = queryTokens.every((token) =>
+        searchableParts.some((part) => part.toLowerCase().includes(token))
+      );
+    }
 
     // 2. Standard Filters
     const matchesStatus = statusFilter === "ALL" || iss.status === statusFilter;
@@ -3553,6 +3618,50 @@ export default function WorkMateEnterpriseApp() {
       matchesDepartment &&
       matchesRoleScope
     );
+  });
+
+  const priorityWeight: Record<string, number> = {
+    URGENT: 4,
+    HIGH: 3,
+    MEDIUM: 2,
+    LOW: 1,
+  };
+
+  // Sorted Issues based on user-selected order (Defaults to NEWEST / Recent First)
+  const sortedIssues = [...filteredIssues].sort((a, b) => {
+    switch (ticketSortOrder) {
+      case "NEWEST": {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (timeB !== timeA) return timeB - timeA;
+        return (b.ticketNumber || 0) - (a.ticketNumber || 0);
+      }
+      case "OLDEST": {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (timeA !== timeB) return timeA - timeB;
+        return (a.ticketNumber || 0) - (b.ticketNumber || 0);
+      }
+      case "PRIORITY_DESC": {
+        const pA = priorityWeight[a.priority] || 0;
+        const pB = priorityWeight[b.priority] || 0;
+        if (pB !== pA) return pB - pA;
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      }
+      case "TICKET_DESC":
+        return (b.ticketNumber || 0) - (a.ticketNumber || 0);
+      case "TICKET_ASC":
+        return (a.ticketNumber || 0) - (b.ticketNumber || 0);
+      case "RECENTLY_UPDATED": {
+        const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        return timeB - timeA;
+      }
+      default:
+        return 0;
+    }
   });
 
   // Filtered Tasks (Supports Enterprise Role Scoping: Non-superadmin only sees their own work)
@@ -4202,17 +4311,66 @@ export default function WorkMateEnterpriseApp() {
       {activeTab === "tickets" && (
         <div>
           <div className="control-bar">
-            <div className="search-filter-group">
-              <div className="search-input-wrapper">
+            <div className="search-filter-group" style={{ flexWrap: "wrap" }}>
+              <div className="search-input-wrapper" style={{ position: "relative" }}>
                 <span className="search-icon">🔍</span>
                 <input
                   type="text"
                   className="search-input"
-                  placeholder="Search tickets by title, service, or keywords..."
+                  style={{ paddingRight: searchQuery ? "32px" : "12px" }}
+                  placeholder="Search #TIK-001, title, assignee, dept, component, keyword..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    title="Clear search"
+                    style={{
+                      position: "absolute",
+                      right: "10px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "rgba(255, 255, 255, 0.12)",
+                      border: "none",
+                      color: "#cbd5e1",
+                      borderRadius: "50%",
+                      width: "18px",
+                      height: "18px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "11px",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
+
+              {/* Sorter Selector (Defaults to Recent First) */}
+              <select
+                className="filter-select"
+                value={ticketSortOrder}
+                onChange={(e) => setTicketSortOrder(e.target.value as any)}
+                title="Sort tickets order"
+                style={{
+                  minWidth: "165px",
+                  fontWeight: ticketSortOrder !== "NEWEST" ? "700" : "500",
+                  borderColor: ticketSortOrder !== "NEWEST" ? "var(--accent-cyan)" : undefined,
+                  background: ticketSortOrder !== "NEWEST" ? "rgba(6, 182, 212, 0.08)" : undefined,
+                }}
+              >
+                <option value="NEWEST">⚡ Sort: Recent First</option>
+                <option value="OLDEST">⏳ Sort: Oldest First</option>
+                <option value="PRIORITY_DESC">🚨 Sort: Highest Priority</option>
+                <option value="TICKET_DESC">🔢 Sort: Ticket # Desc</option>
+                <option value="TICKET_ASC">🔢 Sort: Ticket # Asc</option>
+                <option value="RECENTLY_UPDATED">🔄 Sort: Recently Updated</option>
+              </select>
 
               <select className="filter-select" value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)}>
                 <option value="ALL">All Departments</option>
@@ -4297,6 +4455,69 @@ export default function WorkMateEnterpriseApp() {
             </div>
           </div>
 
+          {/* Active Search & Filter Feedback Bar */}
+          {(searchQuery || departmentFilter !== "ALL" || statusFilter !== "ALL" || priorityFilter !== "ALL" || ticketSortOrder !== "NEWEST") && (
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "8px 14px",
+              marginBottom: "14px",
+              background: "rgba(15, 23, 42, 0.65)",
+              border: "1px solid rgba(56, 189, 248, 0.25)",
+              borderRadius: "8px",
+              fontSize: "12px",
+              flexWrap: "wrap",
+              gap: "8px",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <span style={{ color: "#38bdf8", fontWeight: "700" }}>🔍 Active Filters:</span>
+                {searchQuery && (
+                  <span className="badge" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
+                    Search: "{searchQuery}"
+                  </span>
+                )}
+                {departmentFilter !== "ALL" && (
+                  <span className="badge" style={{ background: "rgba(99, 102, 241, 0.15)", color: "#818cf8" }}>
+                    Dept: {departmentFilter}
+                  </span>
+                )}
+                {statusFilter !== "ALL" && (
+                  <span className="badge" style={{ background: "rgba(234, 179, 8, 0.15)", color: "#facc15" }}>
+                    Status: {statusFilter}
+                  </span>
+                )}
+                {priorityFilter !== "ALL" && (
+                  <span className="badge" style={{ background: "rgba(244, 63, 94, 0.15)", color: "#fb7185" }}>
+                    Priority: {priorityFilter}
+                  </span>
+                )}
+                {ticketSortOrder !== "NEWEST" && (
+                  <span className="badge" style={{ background: "rgba(52, 211, 153, 0.15)", color: "#34d399" }}>
+                    Sorted: {ticketSortOrder.replace("_", " ")}
+                  </span>
+                )}
+                <span style={{ color: "var(--text-muted)", marginLeft: "4px" }}>
+                  ({sortedIssues.length} ticket{sortedIssues.length === 1 ? "" : "s"} matched)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setDepartmentFilter("ALL");
+                  setStatusFilter("ALL");
+                  setPriorityFilter("ALL");
+                  setTicketSortOrder("NEWEST");
+                }}
+                className="btn btn-secondary"
+                style={{ padding: "3px 10px", fontSize: "11px", height: "auto" }}
+              >
+                ✕ Reset All Filters
+              </button>
+            </div>
+          )}
+
           {/* Active Role Scoping Notice & Quick Toggles */}
           {activeUser ? (
             <div style={{
@@ -4318,7 +4539,7 @@ export default function WorkMateEnterpriseApp() {
                   <span>Showing tickets assigned to you or created by you.</span>
                 )}
                 <span className="badge badge-assigned" style={{ fontSize: "11px" }}>
-                  {filteredIssues.length} visible {isSuperAdmin ? `of ${issues.length} total` : ""}
+                  {sortedIssues.length} visible {isSuperAdmin ? `of ${issues.length} total` : ""}
                 </span>
               </div>
 
@@ -4412,11 +4633,45 @@ export default function WorkMateEnterpriseApp() {
             </div>
           )}
 
+          {/* Empty search / filter results message */}
+          {sortedIssues.length === 0 && issues.length > 0 && (
+            <div style={{
+              margin: "12px 0 20px",
+              padding: "36px 20px",
+              textAlign: "center",
+              background: "var(--bg-card)",
+              border: "1px dashed var(--border-subtle)",
+              borderRadius: "12px",
+            }}>
+              <div style={{ fontSize: "36px", marginBottom: "8px" }}>🔍</div>
+              <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#f8fafc", marginBottom: "6px" }}>
+                No tickets matching {searchQuery ? `"${searchQuery}"` : "selected filters"}
+              </h3>
+              <p style={{ fontSize: "12px", color: "var(--text-muted)", maxWidth: "460px", margin: "0 auto 14px" }}>
+                Try searching by ticket ID (e.g. #TIK-001 or 1), title, assigned engineer, department, or architecture component.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setDepartmentFilter("ALL");
+                  setStatusFilter("ALL");
+                  setPriorityFilter("ALL");
+                  setTicketSortOrder("NEWEST");
+                }}
+                className="btn btn-primary"
+                style={{ fontSize: "12px", padding: "6px 14px" }}
+              >
+                Clear Search & Filters
+              </button>
+            </div>
+          )}
+
           {/* Kanban Board */}
           {viewMode === "kanban" ? (
             <div className="kanban-board">
               {(["OPEN", "ASSIGNED", "IN_PROGRESS", "RESOLVED"] as IssueStatus[]).map((statusCol) => {
-                const colTickets = filteredIssues.filter((iss) => iss.status === statusCol);
+                const colTickets = sortedIssues.filter((iss) => iss.status === statusCol);
                 const colLabels: Record<string, { title: string; color: string }> = {
                   OPEN: { title: "Unassigned Queue", color: "#60a5fa" },
                   ASSIGNED: { title: "Assigned / Dispatched", color: "#c084fc" },
@@ -4443,9 +4698,14 @@ export default function WorkMateEnterpriseApp() {
                           <div key={iss.id} className="ticket-card" onClick={() => openTicketDetail(iss.id)}>
                             <div className="ticket-top">
                               <span className="ticket-id">#TIK-{String(iss.ticketNumber).padStart(3, "0")}</span>
-                              <div style={{ display: "flex", gap: "6px" }}>
+                              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                                 {iss.slaBreached && <span className="badge badge-urgent" style={{ fontSize: "9px" }}>SLA BREACHED</span>}
                                 <span className={`badge badge-${iss.priority.toLowerCase()}`}>{iss.priority}</span>
+                                {iss.createdAt && (
+                                  <span style={{ fontSize: "10px", color: "var(--accent-cyan)", fontWeight: "600", padding: "1px 5px", background: "rgba(56, 189, 248, 0.1)", borderRadius: "4px" }} title={new Date(iss.createdAt).toLocaleString()}>
+                                    {formatTicketAge(iss.createdAt)}
+                                  </span>
+                                )}
                               </div>
                             </div>
 
@@ -4550,10 +4810,11 @@ export default function WorkMateEnterpriseApp() {
           ) : (
             /* Table View */
             <div className="table-container" style={{ overflowX: "auto" }}>
-              <table className="data-table" style={{ minWidth: "1150px" }}>
+              <table className="data-table" style={{ minWidth: "1200px" }}>
                 <thead>
                   <tr>
                     <th>Ticket ID</th>
+                    <th>Created</th>
                     <th>Priority</th>
                     <th>Target App / Service</th>
                     <th>Layer / Component</th>
@@ -4565,7 +4826,7 @@ export default function WorkMateEnterpriseApp() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredIssues.map((iss) => {
+                  {sortedIssues.map((iss) => {
                     const compBadge = getComponentBadge(iss.component);
                     const monId = iss.monitorUserId || iss.serviceAsset?.monitorUserId;
                     const monUser = users.find((u) => u.id === monId);
@@ -4574,6 +4835,12 @@ export default function WorkMateEnterpriseApp() {
                       <tr key={iss.id} onClick={() => openTicketDetail(iss.id)}>
                         <td style={{ fontFamily: "JetBrains Mono", fontWeight: "600", color: "var(--accent-cyan)" }}>
                           #TIK-{String(iss.ticketNumber).padStart(3, "0")}
+                        </td>
+                        <td style={{ fontSize: "11px", color: "#94a3b8", whiteSpace: "nowrap" }}>
+                          <span style={{ color: "#38bdf8", fontWeight: "600" }}>{formatTicketAge(iss.createdAt)}</span>
+                          <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                            {iss.createdAt ? new Date(iss.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""}
+                          </div>
                         </td>
                         <td><span className={`badge badge-${iss.priority.toLowerCase()}`}>{iss.priority}</span></td>
                         <td>
