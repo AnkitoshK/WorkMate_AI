@@ -892,6 +892,9 @@ button {
   flex-direction: column;
   gap: 6px;
   margin-bottom: 14px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .form-label {
@@ -911,6 +914,15 @@ button {
   color: #fff;
   outline: none;
   transition: border-color 0.15s;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.form-select {
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .form-input:focus, .form-textarea:focus, .form-select:focus {
@@ -933,6 +945,7 @@ button {
   z-index: 1000;
   padding: 20px;
   animation: fadeIn 0.15s ease-out;
+  box-sizing: border-box;
 }
 
 @keyframes fadeIn {
@@ -945,12 +958,14 @@ button {
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   width: 100%;
-  max-width: 740px;
+  max-width: 780px;
   max-height: 90vh;
   overflow-y: auto;
+  overflow-x: hidden;
   box-shadow: var(--shadow-lg);
   padding: 24px;
   position: relative;
+  box-sizing: border-box;
 }
 
 .modal-header {

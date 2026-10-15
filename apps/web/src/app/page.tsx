@@ -7214,7 +7214,7 @@ export default function WorkMateEnterpriseApp() {
       {/* MODAL 2: LOG INCIDENT TICKET (WITH REAL SCENARIO APP SELECTION) */}
       {isNewTicketOpen && (
         <div className="modal-overlay" onClick={() => setIsNewTicketOpen(false)}>
-          <div className="modal-content" style={{ maxWidth: "780px" }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth: "860px", width: "95%", overflowX: "hidden" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
                 <h2 className="modal-title">Create New Ticket</h2>
@@ -7514,29 +7514,32 @@ export default function WorkMateEnterpriseApp() {
                   return (
                     <div style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: "10px",
+                      gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                      gap: "12px",
                       background: "rgba(30, 41, 59, 0.7)",
                       border: "1px solid rgba(255, 255, 255, 0.07)",
                       borderRadius: "8px",
-                      padding: "10px 12px",
+                      padding: "10px 14px",
                       fontSize: "12px",
+                      minWidth: 0,
+                      width: "100%",
+                      boxSizing: "border-box",
                     }}>
                       {/* Specialist Engineer (User 1 or User 2) */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                        <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#94a3b8", fontWeight: "700" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0, overflow: "hidden" }}>
+                        <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#94a3b8", fontWeight: "700", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           ⚡ Assigned Specialist ({isFrontend ? "User 1 - Frontend Lead" : isBackend ? "User 2 - Backend Lead" : "Layer Lead"})
                         </span>
                         {assignedUser ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#34d399", display: "inline-block", boxShadow: "0 0 6px #34d399" }}></span>
-                            <strong style={{ color: "#f8fafc" }}>{assignedUser.name}</strong>
-                            <span className="badge badge-assigned" style={{ fontSize: "9px", padding: "1px 5px" }}>{assignedUser.role}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#34d399", display: "inline-block", boxShadow: "0 0 6px #34d399", flexShrink: 0 }}></span>
+                            <strong style={{ color: "#f8fafc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{assignedUser.name}</strong>
+                            <span className="badge badge-assigned" style={{ fontSize: "9px", padding: "1px 5px", flexShrink: 0 }}>{assignedUser.role}</span>
                           </div>
                         ) : (
                           <span style={{ color: "#fb7185", fontSize: "11px" }}>⚠️ None auto-mapped (select assignee below)</span>
                         )}
-                        <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {selectedService
                             ? `Mapped to ${selectedService.name} (${ticketForm.component || "General"})`
                             : "Auto-routes based on affected project layer"}
@@ -7544,22 +7547,22 @@ export default function WorkMateEnterpriseApp() {
                       </div>
 
                       {/* Project Monitor (User 3 with View Rights) */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "3px", borderLeft: "1px solid rgba(255, 255, 255, 0.08)", paddingLeft: "10px" }}>
-                        <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#67e8f9", fontWeight: "700" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "3px", borderLeft: "1px solid rgba(255, 255, 255, 0.08)", paddingLeft: "12px", minWidth: 0, overflow: "hidden" }}>
+                        <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#67e8f9", fontWeight: "700", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           👁️ Project Monitor (User 3 - View Rights)
                         </span>
                         {monitorUser ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#06b6d4", display: "inline-block", boxShadow: "0 0 6px #06b6d4" }}></span>
-                            <strong style={{ color: "#67e8f9" }}>{monitorUser.name}</strong>
-                            <span style={{ fontSize: "9px", background: "rgba(6, 182, 212, 0.15)", color: "#22d3ee", padding: "1px 5px", borderRadius: "4px", border: "1px solid rgba(6, 182, 212, 0.3)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#06b6d4", display: "inline-block", boxShadow: "0 0 6px #06b6d4", flexShrink: 0 }}></span>
+                            <strong style={{ color: "#67e8f9", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{monitorUser.name}</strong>
+                            <span style={{ fontSize: "9px", background: "rgba(6, 182, 212, 0.15)", color: "#22d3ee", padding: "1px 5px", borderRadius: "4px", border: "1px solid rgba(6, 182, 212, 0.3)", flexShrink: 0 }}>
                               {monitorUser.role} (Monitoring)
                             </span>
                           </div>
                         ) : (
                           <span style={{ color: "#94a3b8", fontSize: "11px" }}>Global Ops / Squad Monitor</span>
                         )}
-                        <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           Has live view rights to monitor tickets opened by engineers
                         </span>
                       </div>
@@ -7569,11 +7572,12 @@ export default function WorkMateEnterpriseApp() {
               </div>
 
               {/* 2. TICKET TITLE & DETAILS */}
-              <div className="form-group">
+              <div className="form-group" style={{ minWidth: 0 }}>
                 <label className="form-label">Ticket Title *</label>
                 <input
                   type="text"
                   className="form-input"
+                  style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
                   placeholder={
                     ticketForm.serviceAssetId
                       ? `e.g. Issue observed on ${services.find((s) => s.id === ticketForm.serviceAssetId)?.name || "service"}...`
@@ -7585,18 +7589,28 @@ export default function WorkMateEnterpriseApp() {
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                <div className="form-group">
+              {/* HORIZONTAL ROW 1: DEPARTMENT & PRIORITY */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                gap: "14px",
+                marginBottom: "14px",
+                minWidth: 0,
+                width: "100%",
+                boxSizing: "border-box",
+              }}>
+                <div className="form-group" style={{ marginBottom: 0, minWidth: 0 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
                     <label className="form-label" style={{ margin: 0 }}>Department</label>
                     {ticketForm.serviceAssetId && ticketForm.department && (
-                      <span style={{ fontSize: "10px", color: "var(--accent-cyan)", fontWeight: "600" }}>
+                      <span style={{ fontSize: "10px", color: "var(--accent-cyan)", fontWeight: "600", whiteSpace: "nowrap" }}>
                         ✨ Synced with Project
                       </span>
                     )}
                   </div>
                   <select
                     className="form-select"
+                    style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
                     value={ticketForm.department}
                     onChange={(e) => {
                       const newDept = e.target.value;
@@ -7628,10 +7642,11 @@ export default function WorkMateEnterpriseApp() {
                   </select>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Priority</label>
+                <div className="form-group" style={{ marginBottom: 0, minWidth: 0 }}>
+                  <label className="form-label" style={{ marginBottom: "4px" }}>Priority</label>
                   <select
                     className="form-select"
+                    style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
                     value={ticketForm.priority}
                     onChange={(e) => setTicketForm({ ...ticketForm, priority: e.target.value as IssuePriority })}
                   >
@@ -7643,11 +7658,21 @@ export default function WorkMateEnterpriseApp() {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                <div className="form-group">
-                  <label className="form-label">Assignee (Optional)</label>
+              {/* HORIZONTAL ROW 2: ASSIGNEE & PROJECT MONITOR (USER 3 VIEW RIGHTS) */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                gap: "14px",
+                marginBottom: "14px",
+                minWidth: 0,
+                width: "100%",
+                boxSizing: "border-box",
+              }}>
+                <div className="form-group" style={{ marginBottom: 0, minWidth: 0 }}>
+                  <label className="form-label" style={{ marginBottom: "4px" }}>Assignee (Optional)</label>
                   <select
                     className="form-select"
+                    style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
                     value={ticketForm.assigneeId}
                     onChange={(e) => setTicketForm({ ...ticketForm, assigneeId: e.target.value })}
                   >
@@ -7662,30 +7687,33 @@ export default function WorkMateEnterpriseApp() {
                       }
                       return (
                         <option key={u.id} value={u.id}>
-                          {u.name} ({u.role} - {u.department || "Operations"}){roleTag}
+                          {u.name} ({u.role}){roleTag}
                         </option>
                       );
                     })}
                   </select>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>Project Monitor (View Rights)</span>
-                    <span style={{ fontSize: "10px", color: "#67e8f9" }}>👁️ User 3</span>
-                  </label>
+                <div className="form-group" style={{ marginBottom: 0, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <label className="form-label" style={{ margin: 0, display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span>Project Monitor</span>
+                      <span style={{ fontSize: "10px", color: "#67e8f9" }}>👁️ User 3 (View Rights)</span>
+                    </label>
+                  </div>
                   <select
                     className="form-select"
+                    style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
                     value={ticketForm.monitorUserId}
                     onChange={(e) => setTicketForm({ ...ticketForm, monitorUserId: e.target.value })}
                   >
-                    <option value="">✨ Auto-Inherit from Project / Global Ops</option>
+                    <option value="">✨ Auto-Inherit / Global Ops</option>
                     {users.map((u) => {
                       const selServ = services.find((s) => s.id === ticketForm.serviceAssetId);
                       const isAssignedMonitor = selServ && u.id === selServ.monitorUserId;
                       return (
                         <option key={u.id} value={u.id}>
-                          {u.name} ({u.role} - {u.department || "Operations"}){isAssignedMonitor ? " — 👁️ Default Project Monitor" : ""}
+                          {u.name} ({u.role}){isAssignedMonitor ? " — 👁️ Default Monitor" : ""}
                         </option>
                       );
                     })}
@@ -7693,21 +7721,25 @@ export default function WorkMateEnterpriseApp() {
                 </div>
               </div>
 
-              <div className="form-group">
+              {/* HORIZONTAL ROW 3: AFFECTED URL / LOCATION */}
+              <div className="form-group" style={{ minWidth: 0 }}>
                 <label className="form-label">Affected URL / Location (Optional)</label>
                 <input
                   type="text"
                   className="form-input"
+                  style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
                   placeholder="e.g. https://example.com/checkout or /dashboard"
                   value={ticketForm.affectedUrl}
                   onChange={(e) => setTicketForm({ ...ticketForm, affectedUrl: e.target.value })}
                 />
               </div>
 
-              <div className="form-group">
+              {/* DESCRIPTION & DETAILS */}
+              <div className="form-group" style={{ minWidth: 0 }}>
                 <label className="form-label">Description & Details *</label>
                 <textarea
                   className="form-textarea"
+                  style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
                   placeholder="Describe the issue, error messages, or steps to reproduce..."
                   value={ticketForm.description}
                   onChange={(e) => setTicketForm({ ...ticketForm, description: e.target.value })}
