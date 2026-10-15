@@ -39,7 +39,7 @@ export class IssueService {
       include: {
         reporter: { select: { id: true, name: true, email: true, role: true, avatar: true, department: true } },
         assignee: { select: { id: true, name: true, email: true, role: true, avatar: true, department: true } },
-        serviceAsset: { select: { id: true, name: true, slug: true, type: true, environment: true, slaTargetMins: true } },
+        serviceAsset: true,
         _count: { select: { comments: true, tasks: true } },
       },
       orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
@@ -75,12 +75,14 @@ export class IssueService {
     priority?: IssuePriority;
     category?: IssueCategory;
     department?: string | null;
+    component?: string | null;
     source?: string;
     affectedUrl?: string | null;
     serviceAssetId?: string | null;
     location?: string | null;
     reporterId: string;
     assigneeId?: string | null;
+    monitorUserId?: string | null;
     runAiTriage?: boolean;
   }) {
 
@@ -93,6 +95,7 @@ export class IssueService {
     let department = data.department;
     let serviceAssetId = data.serviceAssetId;
     let assigneeId = data.assigneeId;
+    let monitorUserId = data.monitorUserId;
     let slaMinutes = 60;
 
     // Validate reporter exists in database; if user session was stale/deleted, fall back to active admin/member
@@ -107,12 +110,31 @@ export class IssueService {
       reporterId = fallback.id;
     }
 
-    // Validate serviceAssetId if provided
+    // Validate serviceAssetId and auto-map component engineers & project monitor
     if (serviceAssetId) {
       const assetExists = await prisma.serviceAsset.findUnique({ where: { id: serviceAssetId } });
       if (!assetExists) {
         console.warn(`ServiceAsset ${serviceAssetId} not found in database. Clearing serviceAssetId.`);
         serviceAssetId = null;
+      } else {
+        // Auto-assign based on real-time project mapping
+        if (!assigneeId && data.component) {
+          const comp = data.component.toUpperCase();
+          if (comp.includes("FRONTEND") && assetExists.frontendUserId) {
+            assigneeId = assetExists.frontendUserId;
+          } else if (comp.includes("BACKEND") && assetExists.backendUserId) {
+            assigneeId = assetExists.backendUserId;
+          } else if (assetExists.teamMapping) {
+            try {
+              const mapping = JSON.parse(assetExists.teamMapping);
+              if (mapping[comp]) assigneeId = mapping[comp];
+              else if (mapping[data.component]) assigneeId = mapping[data.component];
+            } catch {}
+          }
+        }
+        if (!monitorUserId && assetExists.monitorUserId) {
+          monitorUserId = assetExists.monitorUserId;
+        }
       }
     }
 
@@ -122,6 +144,14 @@ export class IssueService {
       if (!assigneeExists) {
         console.warn(`Assignee ${assigneeId} not found in database. Clearing assigneeId.`);
         assigneeId = null;
+      }
+    }
+
+    // Validate monitorUserId if provided
+    if (monitorUserId) {
+      const monitorExists = await prisma.user.findUnique({ where: { id: monitorUserId } });
+      if (!monitorExists) {
+        monitorUserId = null;
       }
     }
 
@@ -178,6 +208,7 @@ export class IssueService {
         priority,
         category,
         department: department || "Operations",
+        component: data.component || null,
         source: data.source || "WEB_PORTAL",
         affectedUrl: data.affectedUrl || null,
         serviceAssetId: serviceAssetId || null,
@@ -186,6 +217,7 @@ export class IssueService {
         slaBreached: false,
         reporterId,
         assigneeId: assigneeId || null,
+        monitorUserId: monitorUserId || null,
         aiSummary,
         aiSuggestedAction,
         aiRootCause,
@@ -222,9 +254,11 @@ export class IssueService {
       priority?: IssuePriority;
       category?: IssueCategory;
       department?: string | null;
+      component?: string | null;
       serviceAssetId?: string | null;
       location?: string | null;
       assigneeId?: string | null;
+      monitorUserId?: string | null;
       resolutionNotes?: string | null;
     }
   ) {
@@ -270,6 +304,7 @@ export class IssueService {
           category: updated.category,
           priority: updated.priority,
           department: updated.department,
+          component: updated.component,
           source: updated.source,
           affectedUrl: updated.affectedUrl,
           location: updated.location,
@@ -296,6 +331,7 @@ export class IssueService {
           category: updated.category,
           priority: updated.priority,
           department: updated.department,
+          component: updated.component,
           source: updated.source,
           affectedUrl: updated.affectedUrl,
           location: updated.location,

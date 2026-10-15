@@ -17,12 +17,14 @@ const createIssueSchema = z.object({
   priority: z.nativeEnum(IssuePriority).optional(),
   category: z.nativeEnum(IssueCategory).optional(),
   department: emptyToNull,
+  component: emptyToNull,
   serviceAssetId: emptyToNull,
   affectedUrl: emptyToNull,
   source: z.string().trim().max(50).optional(),
   location: emptyToNull,
   reporterId: z.string().min(1, "Reporter ID is required"),
   assigneeId: emptyToNull,
+  monitorUserId: emptyToNull,
   runAiTriage: z.boolean().optional(),
 });
 
@@ -33,9 +35,11 @@ const updateIssueSchema = z.object({
   priority: z.nativeEnum(IssuePriority).optional(),
   category: z.nativeEnum(IssueCategory).optional(),
   department: z.string().trim().max(100).optional().nullable(),
+  component: z.string().trim().max(50).optional().nullable(),
   serviceAssetId: z.string().optional().nullable(),
   location: z.string().trim().max(200).optional().nullable(),
   assigneeId: z.string().optional().nullable(),
+  monitorUserId: z.string().optional().nullable(),
   resolutionNotes: z.string().trim().max(4000).optional().nullable(),
 });
 

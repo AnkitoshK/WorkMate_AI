@@ -4,27 +4,56 @@ import { prisma } from "../db.js";
 
 const router = Router();
 
+const validSystemTypes = [
+  "WEB_APP",
+  "FRONTEND",
+  "BACKEND",
+  "FULLSTACK",
+  "STATIC",
+  "DYNAMIC",
+  "DATABASE",
+  "ADMIN",
+  "SERVER",
+  "CLOUD",
+  "DEPLOYMENT",
+  "MOBILE_APP",
+  "API_SERVICE",
+  "CLOUD_INFRA",
+  "HARDWARE",
+  "FACILITY",
+] as const;
+
 const createServiceSchema = z.object({
   name: z.string().trim().min(2).max(100),
   slug: z.string().trim().min(2).max(50),
-  type: z.enum(["WEB_APP", "MOBILE_APP", "API_SERVICE", "CLOUD_INFRA", "DATABASE", "HARDWARE", "FACILITY"]),
+  type: z.string().trim().min(2).max(50),
   department: z.string().trim().min(2).max(100),
   environment: z.enum(["PRODUCTION", "STAGING", "ON_PREMISE"]).optional(),
   slaTargetMins: z.number().int().min(5).max(1440).optional(),
-  urlOrLocation: z.string().trim().max(200).optional(),
-  description: z.string().trim().max(1000).optional(),
+  urlOrLocation: z.string().trim().max(200).optional().nullable(),
+  description: z.string().trim().max(1000).optional().nullable(),
+  modules: z.string().trim().max(500).optional().nullable(),
+  frontendUserId: z.string().trim().optional().nullable(),
+  backendUserId: z.string().trim().optional().nullable(),
+  monitorUserId: z.string().trim().optional().nullable(),
+  teamMapping: z.string().trim().max(2000).optional().nullable(),
 });
 
 const updateServiceSchema = z.object({
   name: z.string().trim().min(2).max(100).optional(),
   slug: z.string().trim().min(2).max(50).optional(),
-  type: z.enum(["WEB_APP", "MOBILE_APP", "API_SERVICE", "CLOUD_INFRA", "DATABASE", "HARDWARE", "FACILITY"]).optional(),
+  type: z.string().trim().min(2).max(50).optional(),
   department: z.string().trim().min(2).max(100).optional(),
   environment: z.enum(["PRODUCTION", "STAGING", "ON_PREMISE"]).optional(),
   healthStatus: z.enum(["OPERATIONAL", "DEGRADED", "OUTAGE"]).optional(),
   slaTargetMins: z.number().int().min(5).max(1440).optional(),
   urlOrLocation: z.string().trim().max(200).optional().nullable(),
   description: z.string().trim().max(1000).optional().nullable(),
+  modules: z.string().trim().max(500).optional().nullable(),
+  frontendUserId: z.string().trim().optional().nullable(),
+  backendUserId: z.string().trim().optional().nullable(),
+  monitorUserId: z.string().trim().optional().nullable(),
+  teamMapping: z.string().trim().max(2000).optional().nullable(),
 });
 
 // GET /api/services

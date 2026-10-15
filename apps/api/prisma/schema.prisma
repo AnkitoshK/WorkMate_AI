@@ -73,19 +73,24 @@ model User {
 }
 
 model ServiceAsset {
-  id            String   @id @default(cuid())
-  name          String
-  slug          String   @unique
-  type          String   // WEB_APP, MOBILE_APP, API_SERVICE, HARDWARE, FACILITY
-  department    String   // Software & Cloud Ops, Facilities & Physical Plant, Network, Hardware
-  environment   String   @default("PRODUCTION")
-  healthStatus  String   @default("OPERATIONAL") // OPERATIONAL, DEGRADED, OUTAGE
-  slaTargetMins Int      @default(60)
-  urlOrLocation String?
-  description   String?
-  issues        Issue[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  type           String   // WEB_APP, FRONTEND, BACKEND, FULLSTACK, STATIC, DYNAMIC, DATABASE, ADMIN, SERVER, CLOUD, DEPLOYMENT, MOBILE_APP, API_SERVICE, HARDWARE, FACILITY
+  department     String   // Software & Cloud Ops, Facilities & Physical Plant, Network, Hardware
+  environment    String   @default("PRODUCTION")
+  healthStatus   String   @default("OPERATIONAL") // OPERATIONAL, DEGRADED, OUTAGE
+  slaTargetMins  Int      @default(60)
+  urlOrLocation  String?
+  description    String?
+  modules        String?  // Comma-separated or JSON list of enabled modules: frontend,backend,database,cloud,deployment,admin,server,fullstack
+  frontendUserId String?  // Assigned Frontend Engineer
+  backendUserId  String?  // Assigned Backend Engineer
+  monitorUserId  String?  // Assigned Project Monitor / Viewer with view rights
+  teamMapping    String?  // Extended role-to-user mapping JSON
+  issues         Issue[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([department])
 }
@@ -118,6 +123,7 @@ model Issue {
   priority          IssuePriority @default(MEDIUM)
   category          IssueCategory @default(OTHER)
   department        String?       // Assigned Department
+  component         String?       // FRONTEND, BACKEND, FULLSTACK, STATIC, DYNAMIC, DATABASE, ADMIN, SERVER, CLOUD, DEPLOYMENT
   source            String        @default("WEB_PORTAL") // WEB_PORTAL, MOBILE_APP, API_MONITOR, FIELD_MANUAL
   affectedUrl       String?       // Specific webpage or mobile screen
   location          String?
@@ -134,6 +140,7 @@ model Issue {
   reporter          User          @relation("ReportedIssues", fields: [reporterId], references: [id], onDelete: Cascade)
   assigneeId        String?
   assignee          User?         @relation("AssignedIssues", fields: [assigneeId], references: [id], onDelete: SetNull)
+  monitorUserId     String?       // Project Monitor / Viewer with view rights
   tasks             Task[]
   comments          Comment[]
   resolvedAt        DateTime?
@@ -203,6 +210,7 @@ model ClosedTicket {
   priority           String   @default("MEDIUM")
   category           String   @default("OTHER")
   department         String?
+  component          String?
   source             String   @default("WEB_PORTAL")
   affectedUrl        String?
   location           String?

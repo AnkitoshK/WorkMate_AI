@@ -38,11 +38,30 @@ export interface User {
   _count?: { assignedIssues?: number; tasks?: number };
 }
 
+export type SystemType =
+  | "WEB_APP"
+  | "FRONTEND"
+  | "BACKEND"
+  | "FULLSTACK"
+  | "STATIC"
+  | "DYNAMIC"
+  | "DATABASE"
+  | "ADMIN"
+  | "SERVER"
+  | "CLOUD"
+  | "DEPLOYMENT"
+  | "MOBILE_APP"
+  | "API_SERVICE"
+  | "CLOUD_INFRA"
+  | "HARDWARE"
+  | "FACILITY"
+  | string;
+
 export interface ServiceAsset {
   id: string;
   name: string;
   slug: string;
-  type: "WEB_APP" | "MOBILE_APP" | "API_SERVICE" | "CLOUD_INFRA" | "DATABASE" | "HARDWARE" | "FACILITY";
+  type: SystemType;
   department: string;
   environment: "PRODUCTION" | "STAGING" | "ON_PREMISE";
   healthStatus: "OPERATIONAL" | "DEGRADED" | "OUTAGE";
@@ -50,6 +69,11 @@ export interface ServiceAsset {
   urlOrLocation?: string | null;
   description?: string | null;
   activeIncidents?: number;
+  modules?: string | null;
+  frontendUserId?: string | null;
+  backendUserId?: string | null;
+  monitorUserId?: string | null;
+  teamMapping?: string | null;
 }
 
 export interface Comment {
@@ -84,6 +108,7 @@ export interface Issue {
   priority: IssuePriority;
   category: IssueCategory;
   department?: string | null;
+  component?: string | null;
   source?: string;
   affectedUrl?: string | null;
   location?: string | null;
@@ -100,6 +125,7 @@ export interface Issue {
   reporter: { id: string; name: string; email: string; role: Role; avatar?: string | null; department?: string | null };
   assigneeId?: string | null;
   assignee?: { id: string; name: string; email: string; role: Role; avatar?: string | null; department?: string | null } | null;
+  monitorUserId?: string | null;
   comments?: Comment[];
   tasks?: Task[];
   _count?: { comments: number; tasks: number };
@@ -168,16 +194,66 @@ const AVATAR_PRESETS = [
   "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
 ];
 
+const ALL_PROJECT_MODULES = [
+  { id: "FRONTEND", label: "Frontend", icon: "🎨", desc: "User Interface, Next.js/React, Mobile Web" },
+  { id: "BACKEND", label: "Backend", icon: "⚙️", desc: "Microservices, REST/GraphQL APIs, Server logic" },
+  { id: "FULLSTACK", label: "Fullstack", icon: "⚡", desc: "Full-Stack Web App, SSR & Shared logic" },
+  { id: "STATIC", label: "Static Web", icon: "📄", desc: "Static Website, JAMstack, Docs, CDN Landing" },
+  { id: "DYNAMIC", label: "Dynamic Web", icon: "🔄", desc: "Dynamic Web App, Realtime & WebSockets" },
+  { id: "DATABASE", label: "Database", icon: "🐘", desc: "PostgreSQL, Redis, Storage & Schemas" },
+  { id: "ADMIN", label: "Admin Portal", icon: "🛡️", desc: "SuperAdmin Console & Internal Ops Tools" },
+  { id: "SERVER", label: "Physical Server", icon: "🖥️", desc: "Dedicated Linux Host, Hardware & Bare-Metal" },
+  { id: "CLOUD", label: "Cloud Infra", icon: "☁️", desc: "AWS, GCP, Kubernetes EKS, Cloud Cluster" },
+  { id: "DEPLOYMENT", label: "CI/CD & Deploy", icon: "🚀", desc: "Deployment Pipeline, Docker, Release Runners" },
+] as const;
+
+const ENTERPRISE_DEPARTMENTS = [
+  { id: "IT & Applications", label: "IT & Applications", icon: "💻", desc: "Core enterprise applications, web portals, internal tools" },
+  { id: "Cloud Infrastructure & DevOps", label: "Cloud Infrastructure & DevOps", icon: "☁️", desc: "AWS, GCP, Kubernetes, CI/CD pipelines, SRE" },
+  { id: "Server & Systems Administration", label: "Server & Systems Administration", icon: "🖥️", desc: "Linux/Windows servers, networks, datacenter operations" },
+  { id: "Database & Platform Engineering", label: "Database & Platform Engineering", icon: "🐘", desc: "PostgreSQL, Redis, MySQL, data infrastructure" },
+  { id: "Cybersecurity & SecOps", label: "Cybersecurity & SecOps", icon: "🛡️", desc: "InfoSec, access control, vulnerability audits, firewall" },
+  { id: "Technical & IT Support", label: "Technical & IT Support", icon: "🎧", desc: "IT helpdesk, staff support, hardware/software provisioning" },
+  { id: "Human Resources (HR)", label: "Human Resources (HR)", icon: "👥", desc: "Employee management, payroll, onboarding, HR portal" },
+  { id: "Finance & Billing Operations", label: "Finance & Billing Operations", icon: "💼", desc: "Payment gateways, accounting, financial reporting" },
+  { id: "QA & Quality Engineering", label: "QA & Quality Engineering", icon: "🔍", desc: "Testing automation, release quality, defect tracking" },
+  { id: "Product & Software Engineering", label: "Product & Software Engineering", icon: "📦", desc: "Software product squads, frontend & backend architecture" },
+] as const;
+
 const getServiceIcon = (slugOrType?: string | null) => {
   const lower = (slugOrType || "").toLowerCase();
+  if (lower.includes("frontend")) return "🎨";
+  if (lower.includes("backend")) return "⚙️";
+  if (lower.includes("fullstack")) return "⚡";
+  if (lower.includes("static")) return "📄";
+  if (lower.includes("dynamic")) return "🔄";
+  if (lower.includes("admin")) return "🛡️";
+  if (lower.includes("server")) return "🖥️";
+  if (lower.includes("deploy") || lower.includes("ci") || lower.includes("cd")) return "🚀";
+  if (lower.includes("cloud") || lower.includes("k8s") || lower.includes("kube") || lower.includes("cluster") || lower.includes("infra")) return "☁️";
+  if (lower.includes("postgres") || lower.includes("db") || lower.includes("data") || lower.includes("sql") || lower.includes("redis")) return "🐘";
   if (lower.includes("web") || lower.includes("portal") || lower.includes("react")) return "🌐";
   if (lower.includes("bill") || lower.includes("payment") || lower.includes("stripe")) return "💳";
   if (lower.includes("auth") || lower.includes("identity") || lower.includes("jwt") || lower.includes("oauth")) return "🔐";
-  if (lower.includes("k8s") || lower.includes("kube") || lower.includes("cluster") || lower.includes("infra")) return "☸️";
-  if (lower.includes("postgres") || lower.includes("db") || lower.includes("data") || lower.includes("sql")) return "🐘";
   if (lower.includes("mobile") || lower.includes("expo")) return "📱";
   if (lower.includes("api")) return "⚡";
   return "📦";
+};
+
+const getComponentBadge = (comp?: string | null) => {
+  if (!comp) return null;
+  const upper = comp.toUpperCase();
+  if (upper.includes("FRONTEND")) return { label: "Frontend", icon: "🎨", color: "#38bdf8", bg: "rgba(56, 189, 248, 0.12)", border: "rgba(56, 189, 248, 0.3)" };
+  if (upper.includes("BACKEND")) return { label: "Backend", icon: "⚙️", color: "#a78bfa", bg: "rgba(167, 139, 250, 0.12)", border: "rgba(167, 139, 250, 0.3)" };
+  if (upper.includes("FULLSTACK")) return { label: "Fullstack", icon: "⚡", color: "#facc15", bg: "rgba(250, 204, 21, 0.12)", border: "rgba(250, 204, 21, 0.3)" };
+  if (upper.includes("STATIC")) return { label: "Static Web", icon: "📄", color: "#94a3b8", bg: "rgba(148, 163, 184, 0.12)", border: "rgba(148, 163, 184, 0.3)" };
+  if (upper.includes("DYNAMIC")) return { label: "Dynamic Web", icon: "🔄", color: "#34d399", bg: "rgba(52, 211, 153, 0.12)", border: "rgba(52, 211, 153, 0.3)" };
+  if (upper.includes("DATABASE")) return { label: "Database", icon: "🐘", color: "#fb923c", bg: "rgba(251, 146, 60, 0.12)", border: "rgba(251, 146, 60, 0.3)" };
+  if (upper.includes("ADMIN")) return { label: "Admin Portal", icon: "🛡️", color: "#f43f5e", bg: "rgba(244, 63, 94, 0.12)", border: "rgba(244, 63, 94, 0.3)" };
+  if (upper.includes("SERVER")) return { label: "Physical Server", icon: "🖥️", color: "#cbd5e1", bg: "rgba(203, 213, 225, 0.12)", border: "rgba(203, 213, 225, 0.3)" };
+  if (upper.includes("CLOUD")) return { label: "Cloud Infra", icon: "☁️", color: "#60a5fa", bg: "rgba(96, 165, 250, 0.12)", border: "rgba(96, 165, 250, 0.3)" };
+  if (upper.includes("DEPLOYMENT")) return { label: "CI/CD & Deploy", icon: "🚀", color: "#c084fc", bg: "rgba(192, 132, 252, 0.12)", border: "rgba(192, 132, 252, 0.3)" };
+  return { label: comp, icon: "📦", color: "#93c5fd", bg: "rgba(147, 197, 253, 0.12)", border: "rgba(147, 197, 253, 0.3)" };
 };
 
 export interface ActionToast {
@@ -767,10 +843,12 @@ export default function WorkMateEnterpriseApp() {
     category: "SOFTWARE" as IssueCategory,
     priority: "HIGH" as IssuePriority,
     serviceAssetId: "",
+    component: "FRONTEND",
     department: "",
     location: "",
     affectedUrl: "",
     assigneeId: "",
+    monitorUserId: "",
     runAiTriage: true,
   });
 
@@ -791,12 +869,16 @@ export default function WorkMateEnterpriseApp() {
   const [serviceForm, setServiceForm] = useState({
     name: "",
     slug: "",
-    type: "WEB_APP" as ServiceAsset["type"],
-    department: "Frontend & Mobile Engineering",
+    type: "WEB_APP" as SystemType,
+    department: "IT & Applications",
     environment: "PRODUCTION" as ServiceAsset["environment"],
     slaTargetMins: 30,
     urlOrLocation: "",
     description: "",
+    modules: "FRONTEND,BACKEND,DATABASE,CLOUD,DEPLOYMENT,ADMIN",
+    frontendUserId: "",
+    backendUserId: "",
+    monitorUserId: "",
   });
 
   // Form: New Task
@@ -1718,26 +1800,75 @@ export default function WorkMateEnterpriseApp() {
     triggerToast("success", "Tasks Excel Exported", `Downloaded formatted Excel (.xlsx) with colorful headings containing ${filteredTasks.length} tasks.`, "TASK");
   };
 
-  // Service / Project Selection for Ticket
-  const handleSelectServiceForTicket = useCallback((serviceId: string) => {
+  // Service / Project Selection for Ticket (With real-time auto-assignment of component specialists & monitor)
+  const handleSelectServiceForTicket = useCallback((serviceId: string, overrideComponent?: string) => {
     if (!serviceId) {
       setTicketForm((prev) => ({
         ...prev,
         serviceAssetId: "",
+        monitorUserId: "",
       }));
       return;
     }
     const found = services.find((s) => s.id === serviceId);
     if (found) {
-      setTicketForm((prev) => ({
-        ...prev,
-        serviceAssetId: found.id,
-        department: found.department,
-        affectedUrl: found.urlOrLocation || prev.affectedUrl,
-        location: found.environment || prev.location,
-        priority: (found.slaTargetMins && found.slaTargetMins <= 15 ? "URGENT" : prev.priority) as IssuePriority,
-      }));
+      setTicketForm((prev) => {
+        const comp = (overrideComponent || prev.component || "FRONTEND").toUpperCase();
+        let targetAssignee = prev.assigneeId;
+
+        // Auto-assign based on real-time project mapping
+        if (comp.includes("FRONTEND") && found.frontendUserId) {
+          targetAssignee = found.frontendUserId;
+        } else if (comp.includes("BACKEND") && found.backendUserId) {
+          targetAssignee = found.backendUserId;
+        } else if (found.teamMapping) {
+          try {
+            const mapping = JSON.parse(found.teamMapping);
+            if (mapping[comp]) targetAssignee = mapping[comp];
+          } catch {}
+        }
+
+        return {
+          ...prev,
+          serviceAssetId: found.id,
+          department: found.department,
+          component: overrideComponent || prev.component || (found.type.toUpperCase().includes("BACKEND") ? "BACKEND" : "FRONTEND"),
+          assigneeId: targetAssignee,
+          monitorUserId: found.monitorUserId || prev.monitorUserId || "",
+          affectedUrl: found.urlOrLocation || prev.affectedUrl,
+          location: found.environment || prev.location,
+          priority: (found.slaTargetMins && found.slaTargetMins <= 15 ? "URGENT" : prev.priority) as IssuePriority,
+        };
+      });
     }
+  }, [services]);
+
+  // Real-time Component Switcher for Ticket (Auto-updates mapped engineer)
+  const handleComponentChangeForTicket = useCallback((newComponent: string) => {
+    setTicketForm((prev) => {
+      let targetAssignee = prev.assigneeId;
+      if (prev.serviceAssetId) {
+        const found = services.find((s) => s.id === prev.serviceAssetId);
+        if (found) {
+          const comp = newComponent.toUpperCase();
+          if (comp.includes("FRONTEND") && found.frontendUserId) {
+            targetAssignee = found.frontendUserId;
+          } else if (comp.includes("BACKEND") && found.backendUserId) {
+            targetAssignee = found.backendUserId;
+          } else if (found.teamMapping) {
+            try {
+              const mapping = JSON.parse(found.teamMapping);
+              if (mapping[comp]) targetAssignee = mapping[comp];
+            } catch {}
+          }
+        }
+      }
+      return {
+        ...prev,
+        component: newComponent,
+        assigneeId: targetAssignee,
+      };
+    });
   }, [services]);
 
   // Live Clock Updater for Shift Punching
@@ -2577,6 +2708,8 @@ export default function WorkMateEnterpriseApp() {
           reporterId: activeUser.id,
           assigneeId: ticketForm.assigneeId || undefined,
           serviceAssetId: ticketForm.serviceAssetId || undefined,
+          component: ticketForm.component || undefined,
+          monitorUserId: ticketForm.monitorUserId || undefined,
           department: ticketForm.department || undefined,
           location: ticketForm.location.trim() || undefined,
           affectedUrl: ticketForm.affectedUrl.trim() || undefined,
@@ -2614,6 +2747,7 @@ export default function WorkMateEnterpriseApp() {
         [
           { label: "Ticket Number", value: `#TIK-${String(createdTicket.ticketNumber).padStart(3, "0")}` },
           { label: "Incident Title", value: createdTicket.title },
+          { label: "Architecture Component", value: createdTicket.component || ticketForm.component || "Frontend" },
           { label: "Priority", value: createdTicket.priority },
           { label: "Category", value: createdTicket.category },
           { label: "Assigned Squad", value: createdTicket.department || "Operations" },
@@ -2628,10 +2762,12 @@ export default function WorkMateEnterpriseApp() {
         category: "SOFTWARE",
         priority: "HIGH",
         serviceAssetId: "",
+        component: "FRONTEND",
         department: "",
         location: "",
         affectedUrl: "",
         assigneeId: "",
+        monitorUserId: "",
         runAiTriage: true,
       });
       await refreshAllData();
@@ -2726,11 +2862,15 @@ export default function WorkMateEnterpriseApp() {
       name: "",
       slug: "",
       type: "WEB_APP",
-      department: "Frontend & Mobile Engineering",
+      department: "IT & Applications",
       environment: "PRODUCTION",
       slaTargetMins: 30,
       urlOrLocation: "",
       description: "",
+      modules: "FRONTEND,BACKEND,DATABASE,CLOUD,DEPLOYMENT,ADMIN",
+      frontendUserId: "",
+      backendUserId: "",
+      monitorUserId: "",
     });
     setIsNewServiceOpen(true);
   };
@@ -2751,6 +2891,10 @@ export default function WorkMateEnterpriseApp() {
       slaTargetMins: s.slaTargetMins,
       urlOrLocation: s.urlOrLocation || "",
       description: s.description || "",
+      modules: s.modules || "FRONTEND,BACKEND,DATABASE,CLOUD,DEPLOYMENT,ADMIN",
+      frontendUserId: s.frontendUserId || "",
+      backendUserId: s.backendUserId || "",
+      monitorUserId: s.monitorUserId || "",
     });
     setIsNewServiceOpen(true);
   };
@@ -2798,6 +2942,10 @@ export default function WorkMateEnterpriseApp() {
         slaTargetMins: 30,
         urlOrLocation: "",
         description: "",
+        modules: "FRONTEND,BACKEND,DATABASE,CLOUD,DEPLOYMENT,ADMIN",
+        frontendUserId: "",
+        backendUserId: "",
+        monitorUserId: "",
       });
       const savedName = serviceForm.name;
       const savedSlug = serviceForm.slug;
@@ -3321,12 +3469,13 @@ export default function WorkMateEnterpriseApp() {
 
   const isSuperAdmin = activeUser?.role === "SUPER_ADMIN" || activeUser?.role === "ADMIN";
 
-  // Filtered Issues (Strictly scopes tickets: SuperAdmin sees all fleet; particular users see ONLY their own tickets)
+  // Filtered Issues (Strictly scopes tickets: SuperAdmin sees all fleet; particular users see ONLY their own tickets & monitored projects)
   const filteredIssues = issues.filter((iss) => {
     // 1. Text & Asset Search
     const matchesSearch =
       iss.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       iss.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (iss.component && iss.component.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (iss.location && iss.location.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (iss.serviceAsset?.name && iss.serviceAsset.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -3341,11 +3490,15 @@ export default function WorkMateEnterpriseApp() {
 
     if (activeUser) {
       if (activeUser.role === "VIEWER") {
-        // VIEWER role: Read-only access STRICTLY limited to tickets assigned to their project/squad or assigned to them!
+        // VIEWER role: Read-only access & real-time monitoring rights for tickets
+        // where user is designated as project monitor, or on a project they monitor, or in their department/assigned!
+        const isProjectMonitor =
+          iss.monitorUserId === activeUser.id ||
+          iss.serviceAsset?.monitorUserId === activeUser.id;
         const userDept = (activeUser.department || "").trim().toLowerCase();
         const isGlobal = userDept.includes("all engineering squads") || userDept.includes("global");
 
-        if (isGlobal) {
+        if (isGlobal || isProjectMonitor) {
           matchesRoleScope = true;
         } else {
           const ticketDept = (iss.department || "").trim().toLowerCase();
@@ -3357,8 +3510,14 @@ export default function WorkMateEnterpriseApp() {
           matchesRoleScope = matchesProjectOrDept || isAssignedToUser || isReportedByUser;
         }
       } else if (!isSuperAdmin) {
-        // Particular user login (e.g., Software Engineer, Reporter):
-        // Show tickets assigned to this user, reported by this user, OR matching their assigned project / squad
+        // Engineer / Specialist / User login:
+        // Show tickets assigned to this user, reported by this user, or matching their assigned component on the project!
+        const isAssignedToUser = iss.assigneeId === activeUser.id;
+        const isReportedByUser = iss.reporterId === activeUser.id;
+        const isComponentLead = Boolean(
+          (iss.component?.toUpperCase().includes("FRONTEND") && iss.serviceAsset?.frontendUserId === activeUser.id) ||
+          (iss.component?.toUpperCase().includes("BACKEND") && iss.serviceAsset?.backendUserId === activeUser.id)
+        );
         const userDept = (activeUser.department || "").trim().toLowerCase();
         const isGlobal = userDept.includes("all engineering squads") || userDept.includes("global");
         const ticketDept = (iss.department || "").trim().toLowerCase();
@@ -3366,12 +3525,12 @@ export default function WorkMateEnterpriseApp() {
         const matchesProjectOrDept = Boolean(userDept && (ticketDept === userDept || ticketAsset === userDept));
 
         if (roleScopeFilter === "MY_ASSIGNED") {
-          matchesRoleScope = iss.assigneeId === activeUser.id;
+          matchesRoleScope = isAssignedToUser || isComponentLead;
         } else if (roleScopeFilter === "MY_REPORTED") {
-          matchesRoleScope = iss.reporterId === activeUser.id;
+          matchesRoleScope = isReportedByUser;
         } else {
-          // Default: Only tickets where user is assignee, reporter, or in the assigned squad/project
-          matchesRoleScope = iss.assigneeId === activeUser.id || iss.reporterId === activeUser.id || (!isGlobal && matchesProjectOrDept);
+          // Default: Assigned to user, reported by user, or in their assigned component/project
+          matchesRoleScope = isAssignedToUser || isReportedByUser || isComponentLead || (!isGlobal && matchesProjectOrDept);
         }
       } else {
         // SuperAdmin / Admin:
@@ -4012,18 +4171,12 @@ export default function WorkMateEnterpriseApp() {
                 <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Active Incidents</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                {[
-                  "Backend & Core APIs",
-                  "Frontend & Mobile Engineering",
-                  "DevOps & Cloud SRE",
-                  "Database & Platform Infrastructure",
-                  "QA & Reliability Engineering",
-                ].map((dept) => {
-                  const count = issues.filter((i) => i.department === dept && i.status !== "RESOLVED" && i.status !== "CLOSED").length;
+                {ENTERPRISE_DEPARTMENTS.slice(0, 6).map((dept) => {
+                  const count = issues.filter((i) => i.department === dept.id && i.status !== "RESOLVED" && i.status !== "CLOSED").length;
                   return (
-                    <div key={dept}>
+                    <div key={dept.id}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "4px" }}>
-                        <span style={{ fontWeight: "600" }}>{dept}</span>
+                        <span style={{ fontWeight: "600" }}>{dept.icon} {dept.label}</span>
                         <span style={{ color: "var(--text-muted)" }}>{count} ticket(s)</span>
                       </div>
                       <div style={{ width: "100%", height: "6px", background: "rgba(255,255,255,0.06)", borderRadius: "999px", overflow: "hidden" }}>
@@ -4063,11 +4216,11 @@ export default function WorkMateEnterpriseApp() {
 
               <select className="filter-select" value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)}>
                 <option value="ALL">All Departments</option>
-                <option value="Backend & Core APIs">Backend & Core APIs</option>
-                <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
-                <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
-                <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
-                <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
+                {ENTERPRISE_DEPARTMENTS.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.icon} {dept.label}
+                  </option>
+                ))}
               </select>
 
               <select className="filter-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
@@ -4298,12 +4451,36 @@ export default function WorkMateEnterpriseApp() {
 
                             <div className="ticket-title">{iss.title}</div>
 
-                            {/* Recognized Service / App */}
-                            {iss.serviceAsset && (
-                              <div style={{ fontSize: "11px", color: "var(--accent-cyan)", marginBottom: "6px", fontWeight: "600" }}>
-                                🌐 {iss.serviceAsset.name} ({iss.serviceAsset.type})
-                              </div>
-                            )}
+                            {/* Recognized Service / App & Component Layer */}
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginBottom: "6px" }}>
+                              {iss.serviceAsset && (
+                                <span style={{ fontSize: "11px", color: "var(--accent-cyan)", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                  <span>{getServiceIcon(iss.serviceAsset.slug || iss.serviceAsset.type)}</span>
+                                  <span>{iss.serviceAsset.name}</span>
+                                </span>
+                              )}
+                              {iss.component && (() => {
+                                const compBadge = getComponentBadge(iss.component);
+                                if (!compBadge) return null;
+                                return (
+                                  <span style={{
+                                    fontSize: "10px",
+                                    padding: "1px 6px",
+                                    borderRadius: "4px",
+                                    background: compBadge.bg,
+                                    color: compBadge.color,
+                                    border: `1px solid ${compBadge.border}`,
+                                    fontWeight: "700",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "3px",
+                                  }}>
+                                    <span>{compBadge.icon}</span>
+                                    <span>{compBadge.label}</span>
+                                  </span>
+                                );
+                              })()}
+                            </div>
 
                             <div className="ticket-desc">{iss.description}</div>
 
@@ -4315,20 +4492,47 @@ export default function WorkMateEnterpriseApp() {
                             )}
 
                             <div className="ticket-footer">
-                              <div className="tag-group">
+                              <div className="tag-group" style={{ display: "flex", gap: "5px", flexWrap: "wrap", alignItems: "center" }}>
                                 <span className="badge badge-cat">{iss.department || iss.category}</span>
+                                {(() => {
+                                  const monId = iss.monitorUserId || iss.serviceAsset?.monitorUserId;
+                                  const monUser = users.find((u) => u.id === monId);
+                                  if (!monUser) return null;
+                                  return (
+                                    <span
+                                      style={{
+                                        fontSize: "10px",
+                                        padding: "1px 6px",
+                                        borderRadius: "4px",
+                                        background: "rgba(6, 182, 212, 0.12)",
+                                        color: "#22d3ee",
+                                        border: "1px solid rgba(6, 182, 212, 0.25)",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "3px",
+                                        fontWeight: "600",
+                                      }}
+                                      title={`Monitored by ${monUser.name} (${monUser.role} with view rights)`}
+                                    >
+                                      👁️ {monUser.name.split(" ")[0]}
+                                    </span>
+                                  );
+                                })()}
                               </div>
 
                               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                                 {iss.assignee ? (
-                                  <div title={`Assigned: ${iss.assignee.name} (${iss.assignee.role})`}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "5px" }} title={`Assigned: ${iss.assignee.name} (${iss.assignee.role})`}>
                                     {iss.assignee.avatar ? (
                                       <img src={iss.assignee.avatar} alt={iss.assignee.name} style={{ width: "24px", height: "24px", borderRadius: "50%" }} />
                                     ) : (
-                                      <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "#4f46e5", fontSize: "11px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                      <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "#4f46e5", fontSize: "11px", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: "700" }}>
                                         {iss.assignee.name.charAt(0)}
                                       </div>
                                     )}
+                                    <span style={{ fontSize: "11px", color: "#e2e8f0", maxWidth: "90px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                      {iss.assignee.name.split(" ")[0]}
+                                    </span>
                                   </div>
                                 ) : (
                                   <span style={{ fontSize: "10px", color: "#f87171", background: "rgba(239, 68, 68, 0.1)", padding: "2px 6px", borderRadius: "4px" }}>Unassigned</span>
@@ -4346,53 +4550,102 @@ export default function WorkMateEnterpriseApp() {
           ) : (
             /* Table View */
             <div className="table-container" style={{ overflowX: "auto" }}>
-              <table className="data-table" style={{ minWidth: "1050px" }}>
+              <table className="data-table" style={{ minWidth: "1150px" }}>
                 <thead>
                   <tr>
                     <th>Ticket ID</th>
                     <th>Priority</th>
                     <th>Target App / Service</th>
-                    <th>Department</th>
+                    <th>Layer / Component</th>
                     <th>Incident Title</th>
-                    <th>Assignee</th>
+                    <th>Assigned Specialist</th>
+                    <th>Project Monitor</th>
                     <th>SLA Status</th>
                     <th>AI Diagnostic</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredIssues.map((iss) => (
-                    <tr key={iss.id} onClick={() => openTicketDetail(iss.id)}>
-                      <td style={{ fontFamily: "JetBrains Mono", fontWeight: "600", color: "var(--accent-cyan)" }}>
-                        #TIK-{String(iss.ticketNumber).padStart(3, "0")}
-                      </td>
-                      <td><span className={`badge badge-${iss.priority.toLowerCase()}`}>{iss.priority}</span></td>
-                      <td>
-                        <span style={{ fontWeight: "700", color: "#e2e8f0" }}>{iss.serviceAsset?.name || "General Service"}</span>
-                      </td>
-                      <td><span className="badge badge-cat">{iss.department || "Operations"}</span></td>
-                      <td style={{ fontWeight: "600", maxWidth: "240px" }}>{iss.title}</td>
-                      <td>
-                        {iss.assignee ? (
+                  {filteredIssues.map((iss) => {
+                    const compBadge = getComponentBadge(iss.component);
+                    const monId = iss.monitorUserId || iss.serviceAsset?.monitorUserId;
+                    const monUser = users.find((u) => u.id === monId);
+
+                    return (
+                      <tr key={iss.id} onClick={() => openTicketDetail(iss.id)}>
+                        <td style={{ fontFamily: "JetBrains Mono", fontWeight: "600", color: "var(--accent-cyan)" }}>
+                          #TIK-{String(iss.ticketNumber).padStart(3, "0")}
+                        </td>
+                        <td><span className={`badge badge-${iss.priority.toLowerCase()}`}>{iss.priority}</span></td>
+                        <td>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            {iss.assignee.avatar && <img src={iss.assignee.avatar} alt="" style={{ width: "20px", height: "20px", borderRadius: "50%" }} />}
-                            <span>{iss.assignee.name}</span>
+                            <span>{getServiceIcon(iss.serviceAsset?.slug || iss.serviceAsset?.type)}</span>
+                            <span style={{ fontWeight: "700", color: "#e2e8f0" }}>{iss.serviceAsset?.name || "General Service"}</span>
                           </div>
-                        ) : (
-                          <span style={{ color: "#fb7185", fontSize: "11px" }}>Unassigned</span>
-                        )}
-                      </td>
-                      <td>
-                        {iss.slaBreached ? (
-                          <span className="badge badge-urgent" style={{ fontSize: "10px" }}>BREACHED</span>
-                        ) : (
-                          <span className="badge badge-resolved" style={{ fontSize: "10px" }}>ON TRACK</span>
-                        )}
-                      </td>
-                      <td style={{ maxWidth: "260px", color: "#d8b4fe", fontSize: "11px" }}>
-                        {iss.aiSummary ? `✨ ${iss.aiSummary.slice(0, 50)}...` : "—"}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td>
+                          {compBadge ? (
+                            <span style={{
+                              fontSize: "10px",
+                              padding: "2px 8px",
+                              borderRadius: "4px",
+                              background: compBadge.bg,
+                              color: compBadge.color,
+                              border: `1px solid ${compBadge.border}`,
+                              fontWeight: "700",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}>
+                              <span>{compBadge.icon}</span>
+                              <span>{compBadge.label}</span>
+                            </span>
+                          ) : (
+                            <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ fontWeight: "600", maxWidth: "220px" }}>{iss.title}</td>
+                        <td>
+                          {iss.assignee ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              {iss.assignee.avatar ? (
+                                <img src={iss.assignee.avatar} alt="" style={{ width: "20px", height: "20px", borderRadius: "50%" }} />
+                              ) : (
+                                <div style={{ width: "20px", height: "20px", borderRadius: "50%", background: "#4f46e5", fontSize: "10px", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: "700" }}>
+                                  {iss.assignee.name.charAt(0)}
+                                </div>
+                              )}
+                              <span style={{ fontWeight: "600", color: "#f8fafc" }}>{iss.assignee.name}</span>
+                            </div>
+                          ) : (
+                            <span style={{ color: "#fb7185", fontSize: "11px" }}>Unassigned</span>
+                          )}
+                        </td>
+                        <td>
+                          {monUser ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                              <span style={{ fontSize: "12px" }}>👁️</span>
+                              <span style={{ fontSize: "11px", color: "#67e8f9", fontWeight: "600" }}>{monUser.name}</span>
+                              <span style={{ fontSize: "9px", background: "rgba(6, 182, 212, 0.15)", color: "#22d3ee", padding: "1px 4px", borderRadius: "3px" }}>
+                                {monUser.role}
+                              </span>
+                            </div>
+                          ) : (
+                            <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>Global Ops</span>
+                          )}
+                        </td>
+                        <td>
+                          {iss.slaBreached ? (
+                            <span className="badge badge-urgent" style={{ fontSize: "10px" }}>BREACHED</span>
+                          ) : (
+                            <span className="badge badge-resolved" style={{ fontSize: "10px" }}>ON TRACK</span>
+                          )}
+                        </td>
+                        <td style={{ maxWidth: "240px", color: "#d8b4fe", fontSize: "11px" }}>
+                          {iss.aiSummary ? `✨ ${iss.aiSummary.slice(0, 48)}...` : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -4575,12 +4828,11 @@ export default function WorkMateEnterpriseApp() {
                 onChange={(e) => setClosedDepartmentFilter(e.target.value)}
               >
                 <option value="ALL">All Departments</option>
-                <option value="Backend & Core APIs">Backend & Core APIs</option>
-                <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
-                <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
-                <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
-                <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
-                <option value="Operations">Operations</option>
+                {ENTERPRISE_DEPARTMENTS.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.icon} {dept.label}
+                  </option>
+                ))}
               </select>
 
               <select
@@ -5657,9 +5909,90 @@ export default function WorkMateEnterpriseApp() {
                       <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#fff", margin: 0 }}>{serv.name}</h3>
                     </div>
 
-                    <div style={{ fontSize: "12px", color: "var(--accent-cyan)", marginBottom: "10px", fontFamily: "JetBrains Mono" }}>
+                    <div style={{ fontSize: "12px", color: "var(--accent-cyan)", marginBottom: "8px", fontFamily: "JetBrains Mono" }}>
                       {serv.urlOrLocation || serv.slug}
                     </div>
+
+                    {/* Architecture Modules / Components */}
+                    {serv.modules && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "12px" }}>
+                        {serv.modules.split(",").map(m => m.trim().toUpperCase()).filter(Boolean).map((modId) => {
+                          const badge = getComponentBadge(modId);
+                          return (
+                            <span
+                              key={modId}
+                              style={{
+                                fontSize: "10px",
+                                padding: "2px 7px",
+                                borderRadius: "4px",
+                                background: badge?.bg || "rgba(255, 255, 255, 0.05)",
+                                color: badge?.color || "#94a3b8",
+                                border: `1px solid ${badge?.border || "rgba(255, 255, 255, 0.1)"}`,
+                                fontWeight: "600",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "3px",
+                              }}
+                            >
+                              <span>{badge?.icon || "📦"}</span>
+                              <span>{badge?.label || modId}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Real-time Project Team Mapping Card */}
+                    {(() => {
+                      const feUser = users.find(u => u.id === serv.frontendUserId);
+                      const beUser = users.find(u => u.id === serv.backendUserId);
+                      const monUser = users.find(u => u.id === serv.monitorUserId);
+
+                      return (
+                        <div style={{
+                          background: "rgba(15, 23, 42, 0.65)",
+                          border: "1px solid rgba(255, 255, 255, 0.07)",
+                          borderRadius: "8px",
+                          padding: "10px 12px",
+                          marginBottom: "12px",
+                          fontSize: "11px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "6px",
+                        }}>
+                          <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#94a3b8", fontWeight: "700" }}>
+                            👥 Real-Time Project Team
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
+                              <span>🎨</span> User 1 (Frontend Lead):
+                            </span>
+                            <span style={{ color: feUser ? "#38bdf8" : "#94a3b8", fontWeight: "600" }}>
+                              {feUser ? feUser.name : "Unassigned"}
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
+                              <span>⚙️</span> User 2 (Backend Lead):
+                            </span>
+                            <span style={{ color: beUser ? "#a78bfa" : "#94a3b8", fontWeight: "600" }}>
+                              {beUser ? beUser.name : "Unassigned"}
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid rgba(255, 255, 255, 0.05)", paddingTop: "5px" }}>
+                            <span style={{ color: "#67e8f9", display: "flex", alignItems: "center", gap: "4px" }}>
+                              <span>👁️</span> User 3 (Project Monitor):
+                            </span>
+                            <span style={{ color: monUser ? "#22d3ee" : "#94a3b8", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
+                              {monUser ? monUser.name : "Global Ops"}
+                              <span style={{ fontSize: "9px", background: "rgba(6, 182, 212, 0.15)", color: "#22d3ee", padding: "1px 4px", borderRadius: "3px" }}>
+                                View Rights
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     <p style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.5", marginBottom: "14px" }}>
                       {serv.description || "No description configured."}
@@ -5671,46 +6004,62 @@ export default function WorkMateEnterpriseApp() {
                     </div>
                   </div>
 
-                  {/* SuperAdmin Management Actions: Rename / Edit & Delete */}
-                  {activeUser?.role === "SUPER_ADMIN" && (
-                    <div style={{
-                      marginTop: "16px",
-                      paddingTop: "12px",
-                      borderTop: "1px solid var(--border-subtle)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "flex-end",
-                      gap: "8px",
-                    }}>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ padding: "6px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "5px" }}
-                        onClick={() => handleOpenEditService(serv)}
-                        title="Rename or edit project details"
-                      >
-                        <span>✏️</span> Rename / Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-danger"
-                        style={{
-                          padding: "6px 12px",
-                          fontSize: "12px",
-                          background: "rgba(244, 63, 94, 0.15)",
-                          color: "#fb7185",
-                          border: "1px solid rgba(244, 63, 94, 0.3)",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "5px",
-                        }}
-                        onClick={() => handleDeleteService(serv.id, serv.name)}
-                        title="Delete project from catalog"
-                      >
-                        <span>🗑️</span> Delete
-                      </button>
-                    </div>
-                  )}
+                  {/* Project Actions: Quick Raise Ticket + SuperAdmin Management */}
+                  <div style={{
+                    marginTop: "16px",
+                    paddingTop: "12px",
+                    borderTop: "1px solid var(--border-subtle)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                  }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: "6px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "5px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.3)" }}
+                      onClick={() => {
+                        handleSelectServiceForTicket(serv.id);
+                        setIsNewTicketOpen(true);
+                      }}
+                      title="Log an incident ticket prefilling this project"
+                    >
+                      <span>⚡</span> + Raise Ticket
+                    </button>
+
+                    {activeUser?.role === "SUPER_ADMIN" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ padding: "6px 10px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}
+                          onClick={() => handleOpenEditService(serv)}
+                          title="Rename or edit project details"
+                        >
+                          <span>✏️</span> Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-danger"
+                          style={{
+                            padding: "6px 10px",
+                            fontSize: "12px",
+                            background: "rgba(244, 63, 94, 0.15)",
+                            color: "#fb7185",
+                            border: "1px solid rgba(244, 63, 94, 0.3)",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                          onClick={() => handleDeleteService(serv.id, serv.name)}
+                          title="Delete project from catalog"
+                        >
+                          <span>🗑️</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -6532,11 +6881,105 @@ export default function WorkMateEnterpriseApp() {
 
             <h2 className="modal-title" style={{ marginBottom: "6px" }}>{selectedIssue.title}</h2>
 
-            {selectedIssue.serviceAsset && (
-              <div style={{ fontSize: "13px", color: "var(--accent-cyan)", marginBottom: "12px", fontWeight: "700" }}>
-                🌐 Affected Service: {selectedIssue.serviceAsset.name} ({selectedIssue.serviceAsset.type}) · SLA Target: {selectedIssue.serviceAsset.slaTargetMins}m
-              </div>
-            )}
+            {/* Real-time Project Mapping & Specialist Team Card */}
+            {(() => {
+              const compBadge = getComponentBadge(selectedIssue.component);
+              const monId = selectedIssue.monitorUserId || selectedIssue.serviceAsset?.monitorUserId;
+              const monUser = users.find((u) => u.id === monId);
+              const isFrontend = (selectedIssue.component || "").toUpperCase().includes("FRONTEND");
+              const isBackend = (selectedIssue.component || "").toUpperCase().includes("BACKEND");
+
+              return (
+                <div style={{
+                  background: "rgba(15, 23, 42, 0.75)",
+                  border: "1px solid rgba(56, 189, 248, 0.25)",
+                  borderRadius: "10px",
+                  padding: "12px 16px",
+                  margin: "12px 0 16px",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                  gap: "12px",
+                }}>
+                  {/* Service & Layer */}
+                  <div>
+                    <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-muted)", fontWeight: "700", marginBottom: "4px" }}>
+                      Target Project & Layer
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                      {selectedIssue.serviceAsset ? (
+                        <span style={{ fontSize: "13px", fontWeight: "700", color: "#fff" }}>
+                          {getServiceIcon(selectedIssue.serviceAsset.slug || selectedIssue.serviceAsset.type)} {selectedIssue.serviceAsset.name}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: "13px", color: "#cbd5e1" }}>General Service</span>
+                      )}
+                      {compBadge && (
+                        <span style={{
+                          fontSize: "10px",
+                          padding: "2px 8px",
+                          borderRadius: "4px",
+                          background: compBadge.bg,
+                          color: compBadge.color,
+                          border: `1px solid ${compBadge.border}`,
+                          fontWeight: "700",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}>
+                          <span>{compBadge.icon}</span>
+                          <span>{compBadge.label}</span>
+                        </span>
+                      )}
+                    </div>
+                    {selectedIssue.serviceAsset && (
+                      <div style={{ fontSize: "11px", color: "var(--accent-cyan)", marginTop: "2px" }}>
+                        SLA Target: {selectedIssue.serviceAsset.slaTargetMins}m
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Assigned Specialist (User 1 / User 2) */}
+                  <div>
+                    <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-muted)", fontWeight: "700", marginBottom: "4px" }}>
+                      Assigned Specialist ({isFrontend ? "User 1 - Frontend" : isBackend ? "User 2 - Backend" : "Assigned Engineer"})
+                    </div>
+                    {selectedIssue.assignee ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#34d399", display: "inline-block", boxShadow: "0 0 6px #34d399" }}></span>
+                        <strong style={{ fontSize: "13px", color: "#f8fafc" }}>{selectedIssue.assignee.name}</strong>
+                        <span className="badge badge-assigned" style={{ fontSize: "9px", padding: "1px 5px" }}>{selectedIssue.assignee.role}</span>
+                      </div>
+                    ) : (
+                      <span style={{ color: "#fb7185", fontSize: "12px" }}>⚠️ Unassigned</span>
+                    )}
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                      {selectedIssue.assignee?.department || selectedIssue.department || "Engineering"}
+                    </div>
+                  </div>
+
+                  {/* Active Project Monitor (User 3 with View Rights) */}
+                  <div>
+                    <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#67e8f9", fontWeight: "700", marginBottom: "4px" }}>
+                      Active Project Monitor (User 3 - View Rights)
+                    </div>
+                    {monUser ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#06b6d4", display: "inline-block", boxShadow: "0 0 6px #06b6d4" }}></span>
+                        <strong style={{ fontSize: "13px", color: "#67e8f9" }}>{monUser.name}</strong>
+                        <span style={{ fontSize: "9px", background: "rgba(6, 182, 212, 0.15)", color: "#22d3ee", padding: "1px 5px", borderRadius: "4px", border: "1px solid rgba(6, 182, 212, 0.3)" }}>
+                          {monUser.role} (Monitoring)
+                        </span>
+                      </div>
+                    ) : (
+                      <span style={{ color: "#94a3b8", fontSize: "12px" }}>Global Ops / Squad Monitor</span>
+                    )}
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                      Has live view rights to track this ticket
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div style={{ fontSize: "12px", color: "var(--text-dim)", marginBottom: "16px" }}>
               Reported by {selectedIssue.reporter?.name || "Operator"} · {selectedIssue.location ? `📍 ${selectedIssue.location}` : "No location"} · {new Date(selectedIssue.createdAt).toLocaleString()}
@@ -6844,15 +7287,29 @@ export default function WorkMateEnterpriseApp() {
                     {/* Dynamic Applications & Projects from Database */}
                     {services.map((s) => {
                       const isSelected = ticketForm.serviceAssetId === s.id;
+                      const isDeptMatched = Boolean(ticketForm.department && s.department === ticketForm.department);
                       const icon = getServiceIcon(s.slug || s.type);
                       return (
                         <div
                           key={s.id}
                           className={`project-card ${isSelected ? "selected" : ""}`}
                           onClick={() => handleSelectServiceForTicket(s.id)}
-                          style={{ position: "relative" }}
+                          style={{
+                            position: "relative",
+                            borderColor: isSelected
+                              ? undefined
+                              : isDeptMatched
+                              ? "rgba(56, 189, 248, 0.45)"
+                              : undefined,
+                            boxShadow: isDeptMatched && !isSelected ? "0 0 10px rgba(56, 189, 248, 0.15)" : undefined,
+                          }}
                         >
                           {isSelected && <span className="check-pill">Selected</span>}
+                          {isDeptMatched && !isSelected && (
+                            <span className="check-pill" style={{ background: "rgba(56, 189, 248, 0.2)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.4)" }}>
+                              Synced
+                            </span>
+                          )}
 
                           {/* SuperAdmin Quick Edit Button */}
                           {activeUser?.role === "SUPER_ADMIN" && (
@@ -6866,7 +7323,7 @@ export default function WorkMateEnterpriseApp() {
                               style={{
                                 position: "absolute",
                                 top: "8px",
-                                right: isSelected ? "75px" : "8px",
+                                right: isSelected ? "75px" : isDeptMatched ? "65px" : "8px",
                                 background: "var(--bg-surface)",
                                 border: "1px solid var(--border-subtle)",
                                 borderRadius: "4px",
@@ -6887,8 +7344,8 @@ export default function WorkMateEnterpriseApp() {
                               {s.name}
                             </strong>
                           </div>
-                          <div style={{ fontSize: "11px", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: "6px" }}>
-                            {s.department}
+                          <div style={{ fontSize: "11px", color: isDeptMatched ? "#38bdf8" : "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: "6px", fontWeight: isDeptMatched ? "600" : "normal" }}>
+                            🏢 {s.department}
                           </div>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "4px" }}>
                             <span
@@ -6946,7 +7403,7 @@ export default function WorkMateEnterpriseApp() {
                       <option value="">✨ Auto-Detect with AI (from description)</option>
                       {services.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {getServiceIcon(s.slug || s.type)} {s.name} — {s.department} ({s.slaTargetMins}m SLA)
+                          {getServiceIcon(s.slug || s.type)} {s.name} — 🏢 {s.department} ({s.slaTargetMins}m SLA)
                         </option>
                       ))}
                     </select>
@@ -6991,6 +7448,126 @@ export default function WorkMateEnterpriseApp() {
                 ) : null}
               </div>
 
+              {/* 1.5 REAL-TIME PROJECT LAYER / COMPONENT SELECTOR & TEAM MAPPING ROUTER */}
+              <div className="form-group" style={{
+                marginBottom: "18px",
+                background: "rgba(15, 23, 42, 0.65)",
+                border: "1px solid rgba(56, 189, 248, 0.22)",
+                borderRadius: "10px",
+                padding: "14px 16px"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
+                  <label className="form-label" style={{ margin: 0, display: "flex", alignItems: "center", gap: "6px", color: "#38bdf8", fontWeight: "700" }}>
+                    <span>🎯 Project Layer / Component Affected *</span>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "normal" }}>
+                      (Auto-maps specialist engineer & sets project monitor)
+                    </span>
+                  </label>
+                  <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                    Active: <strong style={{ color: "#38bdf8" }}>{ticketForm.component || "FRONTEND"}</strong>
+                  </span>
+                </div>
+
+                {/* Quick Architecture Component Pills */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "12px" }}>
+                  {ALL_PROJECT_MODULES.map((mod) => {
+                    const isSelected = (ticketForm.component || "").toUpperCase() === mod.id;
+                    const badge = getComponentBadge(mod.id);
+                    return (
+                      <button
+                        key={mod.id}
+                        type="button"
+                        onClick={() => handleComponentChangeForTicket(mod.id)}
+                        title={mod.desc}
+                        style={{
+                          background: isSelected ? badge?.bg || "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.04)",
+                          color: isSelected ? badge?.color || "#38bdf8" : "#94a3b8",
+                          border: isSelected ? `1.5px solid ${badge?.color || "#38bdf8"}` : "1px solid rgba(255, 255, 255, 0.08)",
+                          boxShadow: isSelected ? `0 0 10px ${badge?.bg || "rgba(56, 189, 248, 0.25)"}` : "none",
+                          padding: "5px 11px",
+                          borderRadius: "7px",
+                          fontSize: "12px",
+                          fontWeight: isSelected ? "700" : "500",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <span>{mod.icon}</span>
+                        <span>{mod.label}</span>
+                        {isSelected && <span style={{ fontSize: "9px" }}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Real-time Specialist Routing & Monitor Live Indicator Card */}
+                {(() => {
+                  const selectedService = services.find((s) => s.id === ticketForm.serviceAssetId);
+                  const assignedUser = users.find((u) => u.id === ticketForm.assigneeId);
+                  const monitorUser = users.find((u) => u.id === (ticketForm.monitorUserId || selectedService?.monitorUserId));
+                  const isFrontend = (ticketForm.component || "").toUpperCase().includes("FRONTEND");
+                  const isBackend = (ticketForm.component || "").toUpperCase().includes("BACKEND");
+
+                  return (
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "10px",
+                      background: "rgba(30, 41, 59, 0.7)",
+                      border: "1px solid rgba(255, 255, 255, 0.07)",
+                      borderRadius: "8px",
+                      padding: "10px 12px",
+                      fontSize: "12px",
+                    }}>
+                      {/* Specialist Engineer (User 1 or User 2) */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                        <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#94a3b8", fontWeight: "700" }}>
+                          ⚡ Assigned Specialist ({isFrontend ? "User 1 - Frontend Lead" : isBackend ? "User 2 - Backend Lead" : "Layer Lead"})
+                        </span>
+                        {assignedUser ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#34d399", display: "inline-block", boxShadow: "0 0 6px #34d399" }}></span>
+                            <strong style={{ color: "#f8fafc" }}>{assignedUser.name}</strong>
+                            <span className="badge badge-assigned" style={{ fontSize: "9px", padding: "1px 5px" }}>{assignedUser.role}</span>
+                          </div>
+                        ) : (
+                          <span style={{ color: "#fb7185", fontSize: "11px" }}>⚠️ None auto-mapped (select assignee below)</span>
+                        )}
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                          {selectedService
+                            ? `Mapped to ${selectedService.name} (${ticketForm.component || "General"})`
+                            : "Auto-routes based on affected project layer"}
+                        </span>
+                      </div>
+
+                      {/* Project Monitor (User 3 with View Rights) */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "3px", borderLeft: "1px solid rgba(255, 255, 255, 0.08)", paddingLeft: "10px" }}>
+                        <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#67e8f9", fontWeight: "700" }}>
+                          👁️ Project Monitor (User 3 - View Rights)
+                        </span>
+                        {monitorUser ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#06b6d4", display: "inline-block", boxShadow: "0 0 6px #06b6d4" }}></span>
+                            <strong style={{ color: "#67e8f9" }}>{monitorUser.name}</strong>
+                            <span style={{ fontSize: "9px", background: "rgba(6, 182, 212, 0.15)", color: "#22d3ee", padding: "1px 5px", borderRadius: "4px", border: "1px solid rgba(6, 182, 212, 0.3)" }}>
+                              {monitorUser.role} (Monitoring)
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ color: "#94a3b8", fontSize: "11px" }}>Global Ops / Squad Monitor</span>
+                        )}
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                          Has live view rights to monitor tickets opened by engineers
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
               {/* 2. TICKET TITLE & DETAILS */}
               <div className="form-group">
                 <label className="form-label">Ticket Title *</label>
@@ -7010,22 +7587,43 @@ export default function WorkMateEnterpriseApp() {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div className="form-group">
-                  <label className="form-label">Department</label>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <label className="form-label" style={{ margin: 0 }}>Department</label>
+                    {ticketForm.serviceAssetId && ticketForm.department && (
+                      <span style={{ fontSize: "10px", color: "var(--accent-cyan)", fontWeight: "600" }}>
+                        ✨ Synced with Project
+                      </span>
+                    )}
+                  </div>
                   <select
                     className="form-select"
                     value={ticketForm.department}
-                    onChange={(e) => setTicketForm({ ...ticketForm, department: e.target.value })}
+                    onChange={(e) => {
+                      const newDept = e.target.value;
+                      setTicketForm((prev) => {
+                        let targetServiceId = prev.serviceAssetId;
+                        if (newDept) {
+                          const currentService = services.find((s) => s.id === prev.serviceAssetId);
+                          if (!currentService || currentService.department !== newDept) {
+                            const matchingService = services.find((s) => s.department === newDept);
+                            if (matchingService) {
+                              targetServiceId = matchingService.id;
+                            }
+                          }
+                        }
+                        return {
+                          ...prev,
+                          department: newDept,
+                          serviceAssetId: targetServiceId,
+                        };
+                      });
+                    }}
                   >
                     <option value="">✨ Auto-Assign with AI</option>
-                    <option value="Softech Solution">💻 Softech Solution</option>
-                    <option value="Backend & Core APIs">Backend & Core APIs</option>
-                    <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
-                    <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
-                    <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
-                    <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
-                    <option value="Information Security & SecOps">Information Security & SecOps</option>
-                    {services.filter(s => !["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps"].includes(s.name)).map(s => (
-                      <option key={s.id} value={s.name}>📦 {s.name}</option>
+                    {ENTERPRISE_DEPARTMENTS.map((dept) => (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.icon} {dept.label}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -7054,24 +7652,56 @@ export default function WorkMateEnterpriseApp() {
                     onChange={(e) => setTicketForm({ ...ticketForm, assigneeId: e.target.value })}
                   >
                     <option value="">✨ Auto-Assign with AI</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} ({u.role} - {u.department})
-                      </option>
-                    ))}
+                    {users.map((u) => {
+                      const selServ = services.find((s) => s.id === ticketForm.serviceAssetId);
+                      let roleTag = "";
+                      if (selServ) {
+                        if (u.id === selServ.frontendUserId) roleTag = " — 🎨 Frontend Lead";
+                        else if (u.id === selServ.backendUserId) roleTag = " — ⚙️ Backend Lead";
+                        else if (u.id === selServ.monitorUserId) roleTag = " — 👁️ Project Monitor";
+                      }
+                      return (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.role} - {u.department || "Operations"}){roleTag}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Affected URL / Location (Optional)</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="e.g. https://example.com/checkout or /dashboard"
-                    value={ticketForm.affectedUrl}
-                    onChange={(e) => setTicketForm({ ...ticketForm, affectedUrl: e.target.value })}
-                  />
+                  <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>Project Monitor (View Rights)</span>
+                    <span style={{ fontSize: "10px", color: "#67e8f9" }}>👁️ User 3</span>
+                  </label>
+                  <select
+                    className="form-select"
+                    value={ticketForm.monitorUserId}
+                    onChange={(e) => setTicketForm({ ...ticketForm, monitorUserId: e.target.value })}
+                  >
+                    <option value="">✨ Auto-Inherit from Project / Global Ops</option>
+                    {users.map((u) => {
+                      const selServ = services.find((s) => s.id === ticketForm.serviceAssetId);
+                      const isAssignedMonitor = selServ && u.id === selServ.monitorUserId;
+                      return (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.role} - {u.department || "Operations"}){isAssignedMonitor ? " — 👁️ Default Project Monitor" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Affected URL / Location (Optional)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. https://example.com/checkout or /dashboard"
+                  value={ticketForm.affectedUrl}
+                  onChange={(e) => setTicketForm({ ...ticketForm, affectedUrl: e.target.value })}
+                />
               </div>
 
               <div className="form-group">
@@ -7230,7 +7860,7 @@ export default function WorkMateEnterpriseApp() {
                           department: isSuperAdmin
                             ? "All Engineering Squads (Global)"
                             : userForm.department === "All Engineering Squads (Global)"
-                              ? "Softech Solution"
+                              ? "IT & Applications"
                               : userForm.department,
                         });
                       }}
@@ -7279,27 +7909,22 @@ export default function WorkMateEnterpriseApp() {
                         🌐 All Engineering Squads (Global / Cross-Functional)
                       </option>
                     )}
-                    <option value="Softech Solution">💻 Softech Solution</option>
-                    <option value="Backend & Core APIs">Backend & Core APIs</option>
-                    <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
-                    <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
-                    <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
-                    <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
-                    <option value="Information Security & SecOps">Information Security & SecOps</option>
-                    {services.filter(s => !["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps"].includes(s.name)).map(s => (
-                      <option key={s.id} value={s.name}>📦 {s.name}</option>
+                    {ENTERPRISE_DEPARTMENTS.map((dept) => (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.icon} {dept.label}
+                      </option>
                     ))}
-                    {userForm.department && !["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps", "All Engineering Squads (Global)"].includes(userForm.department) && (
-                      <option value={userForm.department}>📌 {userForm.department} (Custom Project)</option>
+                    {userForm.department && !ENTERPRISE_DEPARTMENTS.some(d => d.id === userForm.department) && userForm.department !== "All Engineering Squads (Global)" && (
+                      <option value={userForm.department}>📌 {userForm.department} (Custom Unit)</option>
                     )}
-                    <option value="__CUSTOM__">✏️ Other / Custom Project Name...</option>
+                    <option value="__CUSTOM__">✏️ Other / Custom Department...</option>
                   </select>
-                  {userForm.role !== "SUPER_ADMIN" && (!["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps"].includes(userForm.department) || userForm.department === "") && (
+                  {userForm.role !== "SUPER_ADMIN" && (!ENTERPRISE_DEPARTMENTS.some(d => d.id === userForm.department) || userForm.department === "") && (
                     <input
                       type="text"
                       className="form-input"
                       style={{ marginTop: "6px" }}
-                      placeholder="Type custom project / squad name (e.g. Softech Solution)..."
+                      placeholder="Type custom department (e.g. IT & Applications, HR, Cloud Ops)..."
                       value={userForm.department}
                       onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
                     />
@@ -7940,7 +8565,7 @@ export default function WorkMateEnterpriseApp() {
                               department: isSuperAdmin
                                 ? "All Engineering Squads (Global)"
                                 : userForm.department === "All Engineering Squads (Global)"
-                                  ? "Softech Solution"
+                                  ? "IT & Applications"
                                   : userForm.department,
                             });
                           }}
@@ -7960,7 +8585,7 @@ export default function WorkMateEnterpriseApp() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                     <div className="form-group">
                       <label className="form-label" style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span>Engineering Squad / Project</span>
+                        <span>Department / Organizational Unit</span>
                         {userForm.role === "SUPER_ADMIN" && (
                           <span style={{ color: "var(--accent-cyan)", fontSize: "11px", fontWeight: "700" }}>
                             👑 Locked: All Squads (SuperAdmin)
@@ -7989,27 +8614,22 @@ export default function WorkMateEnterpriseApp() {
                             🌐 All Engineering Squads (Global / Cross-Functional)
                           </option>
                         )}
-                        <option value="Softech Solution">💻 Softech Solution</option>
-                        <option value="Backend & Core APIs">Backend & Core APIs</option>
-                        <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
-                        <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
-                        <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
-                        <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
-                        <option value="Information Security & SecOps">Information Security & SecOps</option>
-                        {services.filter(s => !["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps"].includes(s.name)).map(s => (
-                          <option key={s.id} value={s.name}>📦 {s.name}</option>
+                        {ENTERPRISE_DEPARTMENTS.map((dept) => (
+                          <option key={dept.id} value={dept.id}>
+                            {dept.icon} {dept.label}
+                          </option>
                         ))}
-                        {userForm.department && !["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps", "All Engineering Squads (Global)"].includes(userForm.department) && (
-                          <option value={userForm.department}>📌 {userForm.department} (Custom Project)</option>
+                        {userForm.department && !ENTERPRISE_DEPARTMENTS.some(d => d.id === userForm.department) && userForm.department !== "All Engineering Squads (Global)" && (
+                          <option value={userForm.department}>📌 {userForm.department} (Custom Unit)</option>
                         )}
-                        <option value="__CUSTOM__">✏️ Other / Custom Project Name...</option>
+                        <option value="__CUSTOM__">✏️ Other / Custom Department...</option>
                       </select>
-                      {userForm.role !== "SUPER_ADMIN" && (!["Softech Solution", "Backend & Core APIs", "Frontend & Mobile Engineering", "DevOps & Cloud SRE", "Database & Platform Infrastructure", "QA & Reliability Engineering", "Information Security & SecOps"].includes(userForm.department) || userForm.department === "") && (
+                      {userForm.role !== "SUPER_ADMIN" && (!ENTERPRISE_DEPARTMENTS.some(d => d.id === userForm.department) || userForm.department === "") && (
                         <input
                           type="text"
                           className="form-input"
                           style={{ marginTop: "6px" }}
-                          placeholder="Type custom project / squad name (e.g. Softech Solution)..."
+                          placeholder="Type custom department (e.g. IT & Applications, HR, Cloud Ops)..."
                           value={userForm.department}
                           onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
                         />
@@ -8434,30 +9054,151 @@ export default function WorkMateEnterpriseApp() {
                     value={serviceForm.type}
                     onChange={(e) => setServiceForm({ ...serviceForm, type: e.target.value as any })}
                   >
-                    <option value="WEB_APP">Web Application / Portal (Next.js/React)</option>
-                    <option value="API_SERVICE">Backend Microservice / REST / GraphQL</option>
-                    <option value="MOBILE_APP">Mobile Web Client (Responsive Web)</option>
-                    <option value="CLOUD_INFRA">Cloud Infrastructure / Kubernetes EKS</option>
-                    <option value="DATABASE">PostgreSQL / Redis Storage Cluster</option>
-                    <option value="HARDWARE">Physical Server / Network Rack</option>
-                    <option value="FACILITY">Data Center / Office Facility</option>
+                    <option value="WEB_APP">🌐 Web Application / Portal (Next.js/React)</option>
+                    <option value="FRONTEND">🎨 Frontend (SPA / React / Next.js / Vue / Mobile Web)</option>
+                    <option value="BACKEND">⚙️ Backend Microservice (REST / GraphQL / Node / Python)</option>
+                    <option value="FULLSTACK">⚡ Fullstack Application (Next.js / Full-Stack MERN)</option>
+                    <option value="STATIC">📄 Static Website / JAMstack (CDN / Docs / Landing)</option>
+                    <option value="DYNAMIC">🔄 Dynamic Web Platform (SSR / Realtime WebSockets)</option>
+                    <option value="DATABASE">🐘 PostgreSQL / Redis / MongoDB Storage Cluster</option>
+                    <option value="ADMIN">🛡️ Admin Portal / Internal Operations Tools</option>
+                    <option value="SERVER">🖥️ Physical Server / Dedicated Host / Bare-Metal</option>
+                    <option value="CLOUD">☁️ Cloud Infrastructure / Kubernetes EKS / AWS / GCP</option>
+                    <option value="DEPLOYMENT">🚀 CI/CD & Deployment Pipeline (DevOps / Docker / Runners)</option>
+                    <option value="MOBILE_APP">📱 Mobile Web Client (Responsive Web)</option>
+                    <option value="API_SERVICE">⚡ API Microservice (REST / GraphQL)</option>
+                    <option value="HARDWARE">🔌 Physical Server / Network Rack</option>
+                    <option value="FACILITY">🏢 Data Center / Office Facility</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Architecture Modules / Layers Supported */}
+              <div className="form-group">
+                <label className="form-label" style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Active Architecture Layers & Modules</span>
+                  <span style={{ fontSize: "11px", color: "var(--accent-cyan)", fontWeight: "600" }}>Click to toggle layers</span>
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "8px", marginTop: "6px" }}>
+                  {ALL_PROJECT_MODULES.map((mod) => {
+                    const currentMods = (serviceForm.modules || "").toUpperCase().split(",").map(m => m.trim());
+                    const isActive = currentMods.includes(mod.id);
+                    return (
+                      <button
+                        key={mod.id}
+                        type="button"
+                        onClick={() => {
+                          let nextMods: string[];
+                          if (isActive) {
+                            nextMods = currentMods.filter(m => m !== mod.id);
+                          } else {
+                            nextMods = [...currentMods, mod.id];
+                          }
+                          setServiceForm({ ...serviceForm, modules: nextMods.filter(Boolean).join(",") });
+                        }}
+                        className={`btn ${isActive ? "btn-primary" : "btn-secondary"}`}
+                        style={{
+                          padding: "6px 10px",
+                          fontSize: "12px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "6px",
+                          fontWeight: isActive ? "700" : "500",
+                          border: isActive ? "1px solid var(--accent-cyan)" : "1px solid var(--border-subtle)",
+                        }}
+                      >
+                        <span>{mod.icon}</span>
+                        <span>{mod.label}</span>
+                        {isActive && <span style={{ fontSize: "10px", color: "#6ee7b7" }}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* REAL-TIME TEAM ROLE MAPPING FOR THIS PROJECT */}
+              <div style={{
+                background: "rgba(30, 41, 59, 0.4)",
+                border: "1px solid rgba(56, 189, 248, 0.25)",
+                borderRadius: "10px",
+                padding: "14px 16px",
+                marginBottom: "16px",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                  <strong style={{ fontSize: "13px", color: "#93c5fd", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>👥</span> Real-Time Project Team Mapping (Assign Specialists & Monitor)
+                  </strong>
+                  <span style={{ fontSize: "11px", color: "var(--accent-cyan)", fontWeight: "600" }}>Live Ticket Routing</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: "12px" }}>🎨 Assigned Frontend Engineer (User 1)</label>
+                    <select
+                      className="form-select"
+                      value={serviceForm.frontendUserId}
+                      onChange={(e) => setServiceForm({ ...serviceForm, frontendUserId: e.target.value })}
+                    >
+                      <option value="">— Unassigned (Auto-Assign with AI) —</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.role} - {u.department})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: "12px" }}>⚙️ Assigned Backend Engineer (User 2)</label>
+                    <select
+                      className="form-select"
+                      value={serviceForm.backendUserId}
+                      onChange={(e) => setServiceForm({ ...serviceForm, backendUserId: e.target.value })}
+                    >
+                      <option value="">— Unassigned (Auto-Assign with AI) —</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.role} - {u.department})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontSize: "12px" }}>👁️ Project Monitor / Viewer (User 3 - View Rights)</label>
+                  <select
+                    className="form-select"
+                    value={serviceForm.monitorUserId}
+                    onChange={(e) => setServiceForm({ ...serviceForm, monitorUserId: e.target.value })}
+                  >
+                    <option value="">— All Authorized Monitors / Viewers —</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} ({u.role} - {u.department})
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                    This user receives live monitoring & view rights for all tickets opened by User 1 (Frontend) and User 2 (Backend).
+                  </div>
                 </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div className="form-group">
-                  <label className="form-label">Responsible Engineering Team</label>
+                  <label className="form-label">Responsible Department / IT Unit</label>
                   <select
                     className="form-select"
                     value={serviceForm.department}
                     onChange={(e) => setServiceForm({ ...serviceForm, department: e.target.value })}
                   >
-                    <option value="Backend & Core APIs">Backend & Core APIs</option>
-                    <option value="Frontend & Mobile Engineering">Frontend & Mobile Engineering</option>
-                    <option value="DevOps & Cloud SRE">DevOps & Cloud SRE</option>
-                    <option value="Database & Platform Infrastructure">Database & Platform Infrastructure</option>
-                    <option value="QA & Reliability Engineering">QA & Reliability Engineering</option>
+                    {ENTERPRISE_DEPARTMENTS.map((dept) => (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.icon} {dept.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
