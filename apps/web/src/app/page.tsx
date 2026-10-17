@@ -76,6 +76,21 @@ export interface ServiceAsset {
   teamMapping?: string | null;
 }
 
+export interface BatchProjectRow {
+  tempId: string;
+  name: string;
+  slug: string;
+  department: string;
+  type: SystemType;
+  slaTargetMins: number;
+  urlOrLocation: string;
+  description: string;
+  modules: string;
+  frontendUserId: string;
+  backendUserId: string;
+  monitorUserId: string;
+}
+
 export interface Comment {
   id: string;
   content: string;
@@ -825,7 +840,10 @@ export default function WorkMateEnterpriseApp() {
   const [forgotError, setForgotError] = useState("");
   const [forgotSuccess, setForgotSuccess] = useState("");
   const [isNewServiceOpen, setIsNewServiceOpen] = useState(false);
+  const [isBatchServiceOpen, setIsBatchServiceOpen] = useState(false);
   const [editingService, setEditingService] = useState<ServiceAsset | null>(null);
+  const [catalogDeptFilter, setCatalogDeptFilter] = useState<string>("ALL");
+  const [catalogViewMode, setCatalogViewMode] = useState<"grouped" | "grid">("grouped");
   const [newCommentText, setNewCommentText] = useState("");
 
   // Attendance Remarks Modal State (For users re-punching after shift completion/logout)
@@ -934,6 +952,28 @@ export default function WorkMateEnterpriseApp() {
     backendUserId: "",
     monitorUserId: "",
   });
+
+  const createDefaultBatchRow = (dept = "IT & Applications", name = "", type: SystemType = "WEB_APP"): BatchProjectRow => ({
+    tempId: Math.random().toString(36).substring(2, 9),
+    name,
+    slug: name ? name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : "",
+    department: dept,
+    type,
+    slaTargetMins: 30,
+    urlOrLocation: "",
+    description: "",
+    modules: "FRONTEND,BACKEND,DATABASE,CLOUD,DEPLOYMENT,ADMIN",
+    frontendUserId: "",
+    backendUserId: "",
+    monitorUserId: "",
+  });
+
+  const [batchProjectRows, setBatchProjectRows] = useState<BatchProjectRow[]>([
+    createDefaultBatchRow("IT & Applications", "Enterprise Customer Web Portal", "WEB_APP"),
+    createDefaultBatchRow("Cloud Infrastructure & DevOps", "Kubernetes Production Cloud Mesh", "CLOUD"),
+    createDefaultBatchRow("Finance & Billing Operations", "Global Payment Settlement API", "API_SERVICE"),
+  ]);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
 
   // Form: New Task
   const [taskForm, setTaskForm] = useState({
@@ -3060,6 +3100,192 @@ export default function WorkMateEnterpriseApp() {
     } catch (err: any) {
       alert("❌ " + err.message);
     } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Open Batch Provisioning Modal (SuperAdmin Authority)
+  const handleOpenBatchService = () => {
+    if (activeUser && activeUser.role !== "SUPER_ADMIN" && users.length > 0) {
+      alert(`🔒 SuperAdmin Access Required: You are logged in as ${activeUser.name} (${activeUser.role}). Only SuperAdmins can batch-provision projects.`);
+      return;
+    }
+    setIsBatchServiceOpen(true);
+  };
+
+  const handleUpdateBatchRow = (tempId: string, updates: Partial<BatchProjectRow>) => {
+    setBatchProjectRows((prev) =>
+      prev.map((row) => {
+        if (row.tempId !== tempId) return row;
+        const next = { ...row, ...updates };
+        if (
+          updates.name !== undefined &&
+          (!row.slug || row.slug === row.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""))
+        ) {
+          next.slug = updates.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        }
+        return next;
+      })
+    );
+  };
+
+  const handleAddBatchRow = (dept = "IT & Applications") => {
+    setBatchProjectRows((prev) => [...prev, createDefaultBatchRow(dept, "", "WEB_APP")]);
+  };
+
+  const handleRemoveBatchRow = (tempId: string) => {
+    if (batchProjectRows.length <= 1) {
+      alert("At least one project row is required for batch provisioning.");
+      return;
+    }
+    setBatchProjectRows((prev) => prev.filter((r) => r.tempId !== tempId));
+  };
+
+  const handleLoadBatchPreset = () => {
+    setBatchProjectRows([
+      {
+        tempId: "preset-1",
+        name: "Enterprise Customer Web Portal",
+        slug: "enterprise-customer-web-portal",
+        department: "IT & Applications",
+        type: "WEB_APP",
+        slaTargetMins: 30,
+        urlOrLocation: "https://portal.workmate.ai",
+        description: "Primary client facing portal for enterprise account self-service, user permissions, and ticketing.",
+        modules: "FRONTEND,BACKEND,DATABASE,CLOUD,DEPLOYMENT,ADMIN",
+        frontendUserId: "",
+        backendUserId: "",
+        monitorUserId: "",
+      },
+      {
+        tempId: "preset-2",
+        name: "Cloud Infrastructure & Kubernetes Mesh",
+        slug: "cloud-infra-k8s-mesh",
+        department: "Cloud Infrastructure & DevOps",
+        type: "CLOUD",
+        slaTargetMins: 15,
+        urlOrLocation: "https://k8s.workmate.ai",
+        description: "Core cluster orchestration, Docker runners, edge proxies, and auto-scalers.",
+        modules: "CLOUD,DEPLOYMENT,SERVER",
+        frontendUserId: "",
+        backendUserId: "",
+        monitorUserId: "",
+      },
+      {
+        tempId: "preset-3",
+        name: "Global Payment Settlement API",
+        slug: "payment-settlement-api",
+        department: "Finance & Billing Operations",
+        type: "API_SERVICE",
+        slaTargetMins: 15,
+        urlOrLocation: "https://billing-api.workmate.ai",
+        description: "PCI-DSS compliant payment processing engine, invoice ledger, and subscription webhooks.",
+        modules: "BACKEND,DATABASE,ADMIN",
+        frontendUserId: "",
+        backendUserId: "",
+        monitorUserId: "",
+      },
+      {
+        tempId: "preset-4",
+        name: "PostgreSQL BigData Analytics Store",
+        slug: "postgres-bigdata-store",
+        department: "Database & Platform Engineering",
+        type: "DATABASE",
+        slaTargetMins: 30,
+        urlOrLocation: "db-cluster-primary.internal",
+        description: "High-throughput operational database cluster with replica read nodes.",
+        modules: "DATABASE,SERVER,BACKEND",
+        frontendUserId: "",
+        backendUserId: "",
+        monitorUserId: "",
+      },
+      {
+        tempId: "preset-5",
+        name: "Corporate Intranet & Staff Portal",
+        slug: "corporate-intranet-portal",
+        department: "Human Resources (HR)",
+        type: "DYNAMIC",
+        slaTargetMins: 60,
+        urlOrLocation: "https://people.workmate.ai",
+        description: "Internal company staff portal, onboarding flows, and employee leaves dashboard.",
+        modules: "FRONTEND,BACKEND,DATABASE",
+        frontendUserId: "",
+        backendUserId: "",
+        monitorUserId: "",
+      },
+    ]);
+  };
+
+  const handleSaveBatchServices = async (e: FormEvent) => {
+    e.preventDefault();
+    if (activeUser && activeUser.role !== "SUPER_ADMIN" && users.length > 0) {
+      alert(`🔒 SuperAdmin Access Required: Only SuperAdmins have authority to batch-provision projects.`);
+      return;
+    }
+
+    for (let i = 0; i < batchProjectRows.length; i++) {
+      const row = batchProjectRows[i];
+      if (!row.name.trim()) {
+        alert(`Row #${i + 1} is missing a project name.`);
+        return;
+      }
+    }
+
+    try {
+      setBatchSubmitting(true);
+      setActionLoading(true);
+
+      const payload = {
+        services: batchProjectRows.map((r) => ({
+          name: r.name.trim(),
+          slug: r.slug.trim() || r.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+          department: r.department,
+          type: r.type,
+          environment: "PRODUCTION",
+          slaTargetMins: Number(r.slaTargetMins) || 30,
+          urlOrLocation: r.urlOrLocation.trim() || undefined,
+          description: r.description.trim() || undefined,
+          modules: r.modules || "FRONTEND,BACKEND,DATABASE,CLOUD,DEPLOYMENT,ADMIN",
+          frontendUserId: r.frontendUserId || undefined,
+          backendUserId: r.backendUserId || undefined,
+          monitorUserId: r.monitorUserId || undefined,
+        })),
+      };
+
+      const res = await fetch(`${API_BASE}/api/services/batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "Failed to batch provision projects");
+      }
+
+      const resData = await res.json();
+      setIsBatchServiceOpen(false);
+      await refreshAllData();
+
+      const createdCount = resData.count || batchProjectRows.length;
+      const deptsTouched = Array.from(new Set(batchProjectRows.map((r) => r.department)));
+
+      triggerActionModal(
+        "success",
+        `Batch Multi-Project Provisioning Complete!`,
+        `Successfully mapped and provisioned ${createdCount} new project(s) across ${deptsTouched.length} enterprise department(s). All projects are now live in the Service Catalog and ticket routing workflows.`,
+        "SERVICE",
+        undefined,
+        [
+          { label: "Total Projects Created", value: `${createdCount} Projects` },
+          { label: "Departments Configured", value: deptsTouched.join(", ") },
+          { label: "Catalog Isolation", value: "Department ➔ Project ➔ Service Layer Active" },
+        ]
+      );
+    } catch (err: any) {
+      alert("❌ " + err.message);
+    } finally {
+      setBatchSubmitting(false);
       setActionLoading(false);
     }
   };
@@ -6436,228 +6662,418 @@ export default function WorkMateEnterpriseApp() {
       })()}
 
       {/* TAB 3: APPLICATIONS & MONITORED WEBSITES */}
-      {activeTab === "services" && (
-        <div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
-            <div>
-              <h2 style={{ fontSize: "20px", fontWeight: "800" }}>Application & Project Service Catalog</h2>
-              <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                Dynamic catalog of registered web portals, microservices, and databases. SuperAdmin can add, rename, and delete projects.
-              </p>
+      {activeTab === "services" && (() => {
+        const renderServiceCard = (serv: ServiceAsset) => {
+          const feUser = users.find((u) => u.id === serv.frontendUserId);
+          const beUser = users.find((u) => u.id === serv.backendUserId);
+          const monUser = users.find((u) => u.id === serv.monitorUserId);
+
+          return (
+            <div key={serv.id} className="kpi-card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+              <div>
+                <div className="kpi-header">
+                  <span className="kpi-title">{serv.type}</span>
+                  <span className={`badge ${serv.healthStatus === "OPERATIONAL" ? "badge-resolved" : serv.healthStatus === "DEGRADED" ? "badge-progress" : "badge-urgent"}`}>
+                    {serv.healthStatus}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "20px" }}>{getServiceIcon(serv.slug || serv.type)}</span>
+                  <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#fff", margin: 0 }}>{serv.name}</h3>
+                </div>
+
+                <div style={{ fontSize: "12px", color: "var(--accent-cyan)", marginBottom: "8px", fontFamily: "JetBrains Mono" }}>
+                  {serv.urlOrLocation || serv.slug}
+                </div>
+
+                {/* Architecture Modules / Components */}
+                {serv.modules && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "12px" }}>
+                    {serv.modules.split(",").map((m) => m.trim().toUpperCase()).filter(Boolean).map((modId) => {
+                      const badge = getComponentBadge(modId);
+                      return (
+                        <span
+                          key={modId}
+                          style={{
+                            fontSize: "10px",
+                            padding: "2px 7px",
+                            borderRadius: "4px",
+                            background: badge?.bg || "rgba(255, 255, 255, 0.05)",
+                            color: badge?.color || "#94a3b8",
+                            border: `1px solid ${badge?.border || "rgba(255, 255, 255, 0.1)"}`,
+                            fontWeight: "600",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "3px",
+                          }}
+                        >
+                          <span>{badge?.icon || "📦"}</span>
+                          <span>{badge?.label || modId}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Real-time Project Team Mapping Card */}
+                <div style={{
+                  background: "rgba(15, 23, 42, 0.65)",
+                  border: "1px solid rgba(255, 255, 255, 0.07)",
+                  borderRadius: "8px",
+                  padding: "10px 12px",
+                  marginBottom: "12px",
+                  fontSize: "11px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "6px",
+                }}>
+                  <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#94a3b8", fontWeight: "700" }}>
+                    👥 Real-Time Project Team
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <span>🎨</span> User 1 (Frontend Lead):
+                    </span>
+                    <span style={{ color: feUser ? "#38bdf8" : "#94a3b8", fontWeight: "600" }}>
+                      {feUser ? feUser.name : "Unassigned"}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <span>⚙️</span> User 2 (Backend Lead):
+                    </span>
+                    <span style={{ color: beUser ? "#a78bfa" : "#94a3b8", fontWeight: "600" }}>
+                      {beUser ? beUser.name : "Unassigned"}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid rgba(255, 255, 255, 0.05)", paddingTop: "5px" }}>
+                    <span style={{ color: "#67e8f9", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <span>👁️</span> User 3 (Project Monitor):
+                    </span>
+                    <span style={{ color: monUser ? "#22d3ee" : "#94a3b8", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
+                      {monUser ? monUser.name : "Global Ops"}
+                      <span style={{ fontSize: "9px", background: "rgba(6, 182, 212, 0.15)", color: "#22d3ee", padding: "1px 4px", borderRadius: "3px" }}>
+                        View Rights
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.5", marginBottom: "14px" }}>
+                  {serv.description || "No description configured."}
+                </p>
+
+                <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "12px", display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--text-dim)" }}>
+                  <span>Dept: <strong style={{ color: "#fff" }}>{serv.department}</strong></span>
+                  <span>Target SLA: <strong style={{ color: "#fff" }}>{serv.slaTargetMins}m</strong></span>
+                </div>
+              </div>
+
+              {/* Project Actions: Quick Raise Ticket + SuperAdmin Management */}
+              <div style={{
+                marginTop: "16px",
+                paddingTop: "12px",
+                borderTop: "1px solid var(--border-subtle)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "8px",
+                flexWrap: "wrap",
+              }}>
+                <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ padding: "6px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "5px" }}
+                    onClick={() => {
+                      setProjectFilter(serv.id);
+                      setRoleScopeFilter("ALL_TICKETS");
+                      setActiveTab("tickets");
+                    }}
+                    title={`View all incident tickets for ${serv.name}`}
+                  >
+                    <span>👁️</span> View Tickets ({serv.activeIncidents || 0})
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: "6px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "5px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.3)" }}
+                    onClick={() => {
+                      handleSelectServiceForTicket(serv.id);
+                      setIsNewTicketOpen(true);
+                    }}
+                    title="Log an incident ticket prefilling this project"
+                  >
+                    <span>⚡</span> + Raise Ticket
+                  </button>
+                </div>
+
+                {activeUser?.role === "SUPER_ADMIN" && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: "6px 10px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}
+                      onClick={() => handleOpenEditService(serv)}
+                      title="Rename or edit project details"
+                    >
+                      <span>✏️</span> Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      style={{
+                        padding: "6px 10px",
+                        fontSize: "12px",
+                        background: "rgba(244, 63, 94, 0.15)",
+                        color: "#fb7185",
+                        border: "1px solid rgba(244, 63, 94, 0.3)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                      onClick={() => handleDeleteService(serv.id, serv.name)}
+                      title="Delete project from catalog"
+                    >
+                      <span>🗑️</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-            {activeUser?.role === "SUPER_ADMIN" ? (
-              <button className="btn btn-primary" onClick={handleOpenCreateService}>
-                👑 + Add New Project / Service
-              </button>
+          );
+        };
+
+        const filteredServices = catalogDeptFilter === "ALL"
+          ? services
+          : services.filter((s) => s.department === catalogDeptFilter);
+
+        const registeredDepts = Array.from(new Set(services.map((s) => s.department).filter(Boolean)));
+
+        return (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <h2 style={{ fontSize: "20px", fontWeight: "800" }}>Application & Project Service Catalog</h2>
+                  <span className="badge badge-accent" style={{ fontSize: "11px" }}>
+                    {services.length} Total Projects
+                  </span>
+                </div>
+                <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                  Enterprise project registry mapped by Department ➔ Project ➔ Service Layer. Provision multiple projects in batch or register single assets.
+                </p>
+              </div>
+
+              {activeUser?.role === "SUPER_ADMIN" ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleOpenBatchService}
+                    style={{
+                      background: "linear-gradient(135deg, #0284c7, #6366f1)",
+                      border: "1px solid rgba(56, 189, 248, 0.4)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "7px",
+                      fontWeight: "700",
+                      boxShadow: "0 0 16px rgba(14, 165, 233, 0.35)",
+                    }}
+                    title="Provision multiple projects across departments simultaneously"
+                  >
+                    <span>⚡</span> + Batch Add Multiple Projects
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleOpenCreateService}
+                    style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                  >
+                    <span>👑</span> + Single Project
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(244, 63, 94, 0.1)", border: "1px solid rgba(244, 63, 94, 0.25)", padding: "6px 14px", borderRadius: "8px", fontSize: "12px", color: "#fb7185" }}>
+                  <span>🔒</span> Catalog Modification Restricted to SuperAdmin
+                </div>
+              )}
+            </div>
+
+            {/* Department Filter Bar & Grouping Switcher */}
+            {services.length > 0 && (
+              <div style={{
+                background: "rgba(15, 23, 42, 0.6)",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+                borderRadius: "12px",
+                padding: "12px 16px",
+                marginBottom: "20px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+                flexWrap: "wrap",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", flex: 1 }}>
+                  <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <span>🏢</span> Department Mapping:
+                  </span>
+                  <button
+                    type="button"
+                    className={`btn ${catalogDeptFilter === "ALL" ? "btn-primary" : "btn-secondary"}`}
+                    style={{ padding: "4px 10px", fontSize: "12px" }}
+                    onClick={() => setCatalogDeptFilter("ALL")}
+                  >
+                    All Departments ({services.length})
+                  </button>
+                  {registeredDepts.map((deptName) => {
+                    const count = services.filter((s) => s.department === deptName).length;
+                    const isSelected = catalogDeptFilter === deptName;
+                    const deptIcon = ENTERPRISE_DEPARTMENTS.find((d) => d.id === deptName)?.icon || "📁";
+                    return (
+                      <button
+                        key={deptName}
+                        type="button"
+                        className={`btn ${isSelected ? "btn-primary" : "btn-secondary"}`}
+                        style={{ padding: "4px 10px", fontSize: "12px", display: "flex", alignItems: "center", gap: "5px" }}
+                        onClick={() => setCatalogDeptFilter(deptName)}
+                      >
+                        <span>{deptIcon}</span>
+                        <span>{deptName}</span>
+                        <span style={{ fontSize: "10px", background: isSelected ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.1)", padding: "1px 5px", borderRadius: "8px" }}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* View Switcher: Grouped vs Flat */}
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>View:</span>
+                  <button
+                    type="button"
+                    className={`btn ${catalogViewMode === "grouped" ? "btn-primary" : "btn-secondary"}`}
+                    style={{ padding: "4px 10px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}
+                    onClick={() => setCatalogViewMode("grouped")}
+                    title="Group projects visually under their mapped department"
+                  >
+                    <span>📂</span> By Department
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${catalogViewMode === "grid" ? "btn-primary" : "btn-secondary"}`}
+                    style={{ padding: "4px 10px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}
+                    onClick={() => setCatalogViewMode("grid")}
+                    title="Show all projects in a flat grid"
+                  >
+                    <span>🔲</span> Flat Grid
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {services.length === 0 ? (
+              <div style={{ padding: "48px 24px", textAlign: "center", background: "rgba(255,255,255,0.02)", borderRadius: "14px", border: "1px dashed rgba(255,255,255,0.12)" }}>
+                <div style={{ fontSize: "40px", marginBottom: "10px" }}>📦</div>
+                <h3 style={{ fontSize: "17px", fontWeight: "800", color: "#fff", marginBottom: "6px" }}>No Projects Registered Yet</h3>
+                <p style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "480px", margin: "0 auto 16px" }}>
+                  Add your enterprise projects dynamically in batch or individually so team members can select them when logging incident tickets and tracking SLAs.
+                </p>
+                {activeUser?.role === "SUPER_ADMIN" && (
+                  <div style={{ display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleOpenBatchService}
+                      style={{ background: "linear-gradient(135deg, #0284c7, #6366f1)" }}
+                    >
+                      ⚡ + Batch Add Multiple Projects
+                    </button>
+                    <button className="btn btn-secondary" onClick={handleOpenCreateService}>
+                      👑 + Register First Project
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : filteredServices.length === 0 ? (
+              <div style={{ padding: "36px 20px", textAlign: "center", background: "rgba(255,255,255,0.02)", borderRadius: "12px", border: "1px dashed rgba(255,255,255,0.1)" }}>
+                <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>No projects found under department &quot;{catalogDeptFilter}&quot;.</p>
+                <button className="btn btn-secondary" style={{ marginTop: "10px" }} onClick={() => setCatalogDeptFilter("ALL")}>
+                  Reset Department Filter
+                </button>
+              </div>
+            ) : catalogViewMode === "grouped" ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+                {Array.from(new Set(filteredServices.map((s) => s.department || "General IT & Applications"))).map((deptName) => {
+                  const deptProjects = filteredServices.filter((s) => (s.department || "General IT & Applications") === deptName);
+                  const deptMeta = ENTERPRISE_DEPARTMENTS.find((d) => d.id === deptName);
+                  return (
+                    <div
+                      key={deptName}
+                      style={{
+                        background: "rgba(15, 23, 42, 0.4)",
+                        border: "1px solid rgba(255, 255, 255, 0.08)",
+                        borderRadius: "14px",
+                        padding: "20px",
+                      }}
+                    >
+                      <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: "16px",
+                        flexWrap: "wrap",
+                        gap: "10px",
+                        borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
+                        paddingBottom: "12px",
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <span style={{ fontSize: "24px" }}>{deptMeta?.icon || "🏢"}</span>
+                          <div>
+                            <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#fff", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                              <span>{deptName}</span>
+                              <span className="badge badge-accent" style={{ fontSize: "11px" }}>
+                                {deptProjects.length} Project{deptProjects.length === 1 ? "" : "s"}
+                              </span>
+                            </h3>
+                            <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "2px 0 0" }}>
+                              {deptMeta?.desc || "Department projects and mapped application services"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {activeUser?.role === "SUPER_ADMIN" && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ padding: "5px 10px", fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}
+                            onClick={() => {
+                              handleAddBatchRow(deptName);
+                              setIsBatchServiceOpen(true);
+                            }}
+                            title={`Add more projects mapped to ${deptName}`}
+                          >
+                            <span>⚡</span> + Add Project to {deptName}
+                          </button>
+                        )}
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" }}>
+                        {deptProjects.map(renderServiceCard)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(244, 63, 94, 0.1)", border: "1px solid rgba(244, 63, 94, 0.25)", padding: "6px 14px", borderRadius: "8px", fontSize: "12px", color: "#fb7185" }}>
-                <span>🔒</span> Catalog Modification Restricted to SuperAdmin
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "20px" }}>
+                {filteredServices.map(renderServiceCard)}
               </div>
             )}
           </div>
-
-          {services.length === 0 ? (
-            <div style={{ padding: "48px 24px", textAlign: "center", background: "rgba(255,255,255,0.02)", borderRadius: "14px", border: "1px dashed rgba(255,255,255,0.12)" }}>
-              <div style={{ fontSize: "40px", marginBottom: "10px" }}>📦</div>
-              <h3 style={{ fontSize: "17px", fontWeight: "800", color: "#fff", marginBottom: "6px" }}>No Projects Registered Yet</h3>
-              <p style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "480px", margin: "0 auto 16px" }}>
-                Add your enterprise projects dynamically so team members can select them when logging incident tickets and tracking SLAs.
-              </p>
-              {activeUser?.role === "SUPER_ADMIN" && (
-                <button className="btn btn-primary" onClick={handleOpenCreateService}>
-                  👑 + Register First Project
-                </button>
-              )}
-            </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "20px" }}>
-              {services.map((serv) => (
-                <div key={serv.id} className="kpi-card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                  <div>
-                    <div className="kpi-header">
-                      <span className="kpi-title">{serv.type}</span>
-                      <span className={`badge ${serv.healthStatus === "OPERATIONAL" ? "badge-resolved" : serv.healthStatus === "DEGRADED" ? "badge-progress" : "badge-urgent"}`}>
-                        {serv.healthStatus}
-                      </span>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px", marginBottom: "6px" }}>
-                      <span style={{ fontSize: "20px" }}>{getServiceIcon(serv.slug || serv.type)}</span>
-                      <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#fff", margin: 0 }}>{serv.name}</h3>
-                    </div>
-
-                    <div style={{ fontSize: "12px", color: "var(--accent-cyan)", marginBottom: "8px", fontFamily: "JetBrains Mono" }}>
-                      {serv.urlOrLocation || serv.slug}
-                    </div>
-
-                    {/* Architecture Modules / Components */}
-                    {serv.modules && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "12px" }}>
-                        {serv.modules.split(",").map(m => m.trim().toUpperCase()).filter(Boolean).map((modId) => {
-                          const badge = getComponentBadge(modId);
-                          return (
-                            <span
-                              key={modId}
-                              style={{
-                                fontSize: "10px",
-                                padding: "2px 7px",
-                                borderRadius: "4px",
-                                background: badge?.bg || "rgba(255, 255, 255, 0.05)",
-                                color: badge?.color || "#94a3b8",
-                                border: `1px solid ${badge?.border || "rgba(255, 255, 255, 0.1)"}`,
-                                fontWeight: "600",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "3px",
-                              }}
-                            >
-                              <span>{badge?.icon || "📦"}</span>
-                              <span>{badge?.label || modId}</span>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Real-time Project Team Mapping Card */}
-                    {(() => {
-                      const feUser = users.find(u => u.id === serv.frontendUserId);
-                      const beUser = users.find(u => u.id === serv.backendUserId);
-                      const monUser = users.find(u => u.id === serv.monitorUserId);
-
-                      return (
-                        <div style={{
-                          background: "rgba(15, 23, 42, 0.65)",
-                          border: "1px solid rgba(255, 255, 255, 0.07)",
-                          borderRadius: "8px",
-                          padding: "10px 12px",
-                          marginBottom: "12px",
-                          fontSize: "11px",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "6px",
-                        }}>
-                          <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#94a3b8", fontWeight: "700" }}>
-                            👥 Real-Time Project Team
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
-                              <span>🎨</span> User 1 (Frontend Lead):
-                            </span>
-                            <span style={{ color: feUser ? "#38bdf8" : "#94a3b8", fontWeight: "600" }}>
-                              {feUser ? feUser.name : "Unassigned"}
-                            </span>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
-                              <span>⚙️</span> User 2 (Backend Lead):
-                            </span>
-                            <span style={{ color: beUser ? "#a78bfa" : "#94a3b8", fontWeight: "600" }}>
-                              {beUser ? beUser.name : "Unassigned"}
-                            </span>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid rgba(255, 255, 255, 0.05)", paddingTop: "5px" }}>
-                            <span style={{ color: "#67e8f9", display: "flex", alignItems: "center", gap: "4px" }}>
-                              <span>👁️</span> User 3 (Project Monitor):
-                            </span>
-                            <span style={{ color: monUser ? "#22d3ee" : "#94a3b8", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
-                              {monUser ? monUser.name : "Global Ops"}
-                              <span style={{ fontSize: "9px", background: "rgba(6, 182, 212, 0.15)", color: "#22d3ee", padding: "1px 4px", borderRadius: "3px" }}>
-                                View Rights
-                              </span>
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    <p style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.5", marginBottom: "14px" }}>
-                      {serv.description || "No description configured."}
-                    </p>
-
-                    <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "12px", display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--text-dim)" }}>
-                      <span>Dept: <strong style={{ color: "#fff" }}>{serv.department}</strong></span>
-                      <span>Target SLA: <strong style={{ color: "#fff" }}>{serv.slaTargetMins}m</strong></span>
-                    </div>
-                  </div>
-
-                  {/* Project Actions: Quick Raise Ticket + SuperAdmin Management */}
-                  <div style={{
-                    marginTop: "16px",
-                    paddingTop: "12px",
-                    borderTop: "1px solid var(--border-subtle)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "8px",
-                    flexWrap: "wrap",
-                  }}>
-                    <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        style={{ padding: "6px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "5px" }}
-                        onClick={() => {
-                          setProjectFilter(serv.id);
-                          setRoleScopeFilter("ALL_TICKETS");
-                          setActiveTab("tickets");
-                        }}
-                        title={`View all incident tickets for ${serv.name}`}
-                      >
-                        <span>👁️</span> View Tickets ({serv.activeIncidents || 0})
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ padding: "6px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "5px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.3)" }}
-                        onClick={() => {
-                          handleSelectServiceForTicket(serv.id);
-                          setIsNewTicketOpen(true);
-                        }}
-                        title="Log an incident ticket prefilling this project"
-                      >
-                        <span>⚡</span> + Raise Ticket
-                      </button>
-                    </div>
-
-                    {activeUser?.role === "SUPER_ADMIN" && (
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          style={{ padding: "6px 10px", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}
-                          onClick={() => handleOpenEditService(serv)}
-                          title="Rename or edit project details"
-                        >
-                          <span>✏️</span> Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-danger"
-                          style={{
-                            padding: "6px 10px",
-                            fontSize: "12px",
-                            background: "rgba(244, 63, 94, 0.15)",
-                            color: "#fb7185",
-                            border: "1px solid rgba(244, 63, 94, 0.3)",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "4px",
-                          }}
-                          onClick={() => handleDeleteService(serv.id, serv.name)}
-                          title="Delete project from catalog"
-                        >
-                          <span>🗑️</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+        );
+      })()}
 
       {/* TAB 4: TEAM & ROLES (SUPERADMIN MANAGEMENT) */}
       {activeTab === "team" && (
@@ -10345,6 +10761,355 @@ export default function WorkMateEnterpriseApp() {
                   </button>
                   <button className="btn btn-primary" type="submit" disabled={actionLoading}>
                     {actionLoading ? "Saving..." : editingService ? "✓ Save Project Changes" : "Create Project"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4B: SUPERADMIN BATCH REGISTER & MAP MULTIPLE PROJECTS */}
+      {isBatchServiceOpen && (
+        <div className="modal-overlay" onClick={() => !batchSubmitting && setIsBatchServiceOpen(false)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "980px", width: "95vw", maxHeight: "90vh", overflowY: "auto" }}
+          >
+            <div className="modal-header">
+              <div>
+                <h2 className="modal-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span>⚡</span> Batch Add & Map Multiple Projects
+                </h2>
+                <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "4px 0 0" }}>
+                  Provision multiple projects across departments simultaneously. Each project is mapped to its Department, SLA Target, and Assigned Engineers.
+                </p>
+              </div>
+              <button
+                className="close-btn"
+                onClick={() => !batchSubmitting && setIsBatchServiceOpen(false)}
+                disabled={batchSubmitting}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              background: "rgba(14, 165, 233, 0.08)",
+              border: "1px solid rgba(56, 189, 248, 0.25)",
+              borderRadius: "10px",
+              padding: "10px 14px",
+              marginBottom: "16px",
+              flexWrap: "wrap",
+              gap: "10px",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontSize: "12px", fontWeight: "700", color: "#38bdf8" }}>
+                  📋 {batchProjectRows.length} Project{batchProjectRows.length === 1 ? "" : "s"} Ready to Map
+                </span>
+                <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>•</span>
+                <span style={{ fontSize: "12px", color: "#a5b4fc" }}>
+                  🏢 {Array.from(new Set(batchProjectRows.map((r) => r.department))).length} Department{Array.from(new Set(batchProjectRows.map((r) => r.department))).length === 1 ? "" : "s"} Covered
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ fontSize: "11px", padding: "4px 10px", display: "flex", alignItems: "center", gap: "4px" }}
+                  onClick={handleLoadBatchPreset}
+                  title="Populate sample projects across different enterprise departments"
+                >
+                  <span>⚡</span> Load Multi-Dept Template
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ fontSize: "11px", padding: "4px 10px", display: "flex", alignItems: "center", gap: "4px", borderColor: "rgba(56, 189, 248, 0.4)", color: "#38bdf8" }}
+                  onClick={() => handleAddBatchRow("IT & Applications")}
+                >
+                  <span>+</span> Add Project Row
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveBatchServices}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "14px", marginBottom: "20px" }}>
+                {batchProjectRows.map((row, idx) => (
+                  <div
+                    key={row.tempId}
+                    style={{
+                      background: "rgba(15, 23, 42, 0.7)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "10px",
+                      padding: "14px",
+                      position: "relative",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{
+                          background: "linear-gradient(135deg, #0284c7, #6366f1)",
+                          color: "#fff",
+                          width: "22px",
+                          height: "22px",
+                          borderRadius: "50%",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "11px",
+                          fontWeight: "800",
+                        }}>
+                          {idx + 1}
+                        </span>
+                        <strong style={{ fontSize: "13px", color: "#f8fafc" }}>
+                          {row.name ? row.name : `New Project #${idx + 1}`}
+                        </strong>
+                        <span style={{ fontSize: "11px", color: "var(--accent-cyan)", background: "rgba(6, 182, 212, 0.12)", padding: "1px 6px", borderRadius: "4px" }}>
+                          {row.department}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveBatchRow(row.tempId)}
+                        disabled={batchProjectRows.length <= 1}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: batchProjectRows.length <= 1 ? "rgba(255,255,255,0.2)" : "#fb7185",
+                          cursor: batchProjectRows.length <= 1 ? "not-allowed" : "pointer",
+                          fontSize: "13px",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                        }}
+                        title="Remove this project row"
+                      >
+                        🗑️ Remove
+                      </button>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr", gap: "10px", marginBottom: "10px" }}>
+                      <div>
+                        <label style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
+                          Project / App Name *
+                        </label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          style={{ padding: "7px 10px", fontSize: "12px" }}
+                          placeholder="e.g. Client B CRM & Billing"
+                          value={row.name}
+                          onChange={(e) => handleUpdateBatchRow(row.tempId, { name: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
+                          Slug Code *
+                        </label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          style={{ padding: "7px 10px", fontSize: "12px" }}
+                          placeholder="e.g. client-b-crm"
+                          value={row.slug}
+                          onChange={(e) => handleUpdateBatchRow(row.tempId, { slug: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
+                          Responsible Department *
+                        </label>
+                        <select
+                          className="form-select"
+                          style={{ padding: "7px 10px", fontSize: "12px" }}
+                          value={row.department}
+                          onChange={(e) => handleUpdateBatchRow(row.tempId, { department: e.target.value })}
+                          required
+                        >
+                          {ENTERPRISE_DEPARTMENTS.map((dept) => (
+                            <option key={dept.id} value={dept.id}>
+                              {dept.icon} {dept.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr 1.2fr", gap: "10px", marginBottom: "10px" }}>
+                      <div>
+                        <label style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
+                          System Type
+                        </label>
+                        <select
+                          className="form-select"
+                          style={{ padding: "7px 10px", fontSize: "12px" }}
+                          value={row.type}
+                          onChange={(e) => handleUpdateBatchRow(row.tempId, { type: e.target.value as any })}
+                        >
+                          <option value="WEB_APP">🌐 Web Application / Portal</option>
+                          <option value="FRONTEND">🎨 Frontend Client (SPA / React)</option>
+                          <option value="BACKEND">⚙️ Backend Microservice (REST / API)</option>
+                          <option value="FULLSTACK">⚡ Fullstack Platform</option>
+                          <option value="STATIC">📄 Static Website / JAMstack</option>
+                          <option value="DYNAMIC">🔄 Dynamic Platform (SSR)</option>
+                          <option value="DATABASE">🐘 Database / PostgreSQL / Redis</option>
+                          <option value="ADMIN">🛡️ Admin & Internal Console</option>
+                          <option value="SERVER">🖥️ Physical Server / Host</option>
+                          <option value="CLOUD">☁️ Cloud Infrastructure / K8s</option>
+                          <option value="DEPLOYMENT">🚀 CI/CD & Deploy Pipeline</option>
+                          <option value="API_SERVICE">⚡ API Microservice</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
+                          Target SLA
+                        </label>
+                        <select
+                          className="form-select"
+                          style={{ padding: "7px 10px", fontSize: "12px" }}
+                          value={row.slaTargetMins}
+                          onChange={(e) => handleUpdateBatchRow(row.tempId, { slaTargetMins: Number(e.target.value) })}
+                        >
+                          <option value={15}>15m (Critical)</option>
+                          <option value={30}>30m (High)</option>
+                          <option value={60}>60m (Standard)</option>
+                          <option value={120}>120m (Normal)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
+                          URL / Endpoint (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          style={{ padding: "7px 10px", fontSize: "12px" }}
+                          placeholder="e.g. https://crm.workmate.ai"
+                          value={row.urlOrLocation}
+                          onChange={(e) => handleUpdateBatchRow(row.tempId, { urlOrLocation: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Team Mapping for Row */}
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr 1fr",
+                      gap: "10px",
+                      background: "rgba(0, 0, 0, 0.25)",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                    }}>
+                      <div>
+                        <label style={{ fontSize: "10px", color: "#38bdf8", display: "block", marginBottom: "2px" }}>
+                          🎨 Frontend Lead
+                        </label>
+                        <select
+                          className="form-select"
+                          style={{ padding: "4px 8px", fontSize: "11px" }}
+                          value={row.frontendUserId}
+                          onChange={(e) => handleUpdateBatchRow(row.tempId, { frontendUserId: e.target.value })}
+                        >
+                          <option value="">— Auto-Assign / Open —</option>
+                          {users.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name} ({u.role})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: "10px", color: "#a78bfa", display: "block", marginBottom: "2px" }}>
+                          ⚙️ Backend Lead
+                        </label>
+                        <select
+                          className="form-select"
+                          style={{ padding: "4px 8px", fontSize: "11px" }}
+                          value={row.backendUserId}
+                          onChange={(e) => handleUpdateBatchRow(row.tempId, { backendUserId: e.target.value })}
+                        >
+                          <option value="">— Auto-Assign / Open —</option>
+                          {users.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name} ({u.role})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: "10px", color: "#22d3ee", display: "block", marginBottom: "2px" }}>
+                          👁️ Project Monitor (Viewer)
+                        </label>
+                        <select
+                          className="form-select"
+                          style={{ padding: "4px 8px", fontSize: "11px" }}
+                          value={row.monitorUserId}
+                          onChange={(e) => handleUpdateBatchRow(row.tempId, { monitorUserId: e.target.value })}
+                        >
+                          <option value="">— All Authorized Monitors —</option>
+                          {users.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name} ({u.role})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "14px" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                  onClick={() => handleAddBatchRow("IT & Applications")}
+                  disabled={batchSubmitting}
+                >
+                  <span>+</span> Add Another Project Row
+                </button>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setIsBatchServiceOpen(false)}
+                    disabled={batchSubmitting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={batchSubmitting || batchProjectRows.length === 0}
+                    style={{
+                      background: "linear-gradient(135deg, #0284c7, #6366f1)",
+                      fontWeight: "700",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    {batchSubmitting ? (
+                      <>
+                        <span className="spinner" /> Provisioning Projects...
+                      </>
+                    ) : (
+                      <>
+                        <span>🚀</span> Provision & Map All {batchProjectRows.length} Projects
+                      </>
+                    )}
                   </button>
                 </div>
               </div>

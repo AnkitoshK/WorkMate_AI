@@ -330,6 +330,27 @@ WorkMate AI includes four high-productivity features for filtering and isolating
 
 ---
 
+#### 5. Batch Multi-Project Provisioning Facility & Department Mapping
+WorkMate AI provides a high-throughput **Batch Provisioning Facility** allowing SuperAdmins to onboard and configure multiple enterprise projects simultaneously across organizational departments:
+
+1. **High-Throughput Batch API (`POST /api/services/batch`)**:
+   - Accepts an array of project definitions with target department, system type, SLA targets, and team mappings.
+   - Automatically computes collision-resistant slugs (e.g. `client-b-crm`, `client-b-crm-1`) to prevent unique key constraint violations.
+   - Atomically provisions all project records in PostgreSQL via Prisma.
+
+2. **Interactive Multi-Project Provisioning UI Modal (`⚡ + Batch Add Multiple Projects`)**:
+   - Accessible directly in the **Application & Project Service Catalog** header.
+   - Enables dynamically adding/removing project rows with real-time department mapping.
+   - **`⚡ Load Multi-Dept Template`**: Pre-populates realistic enterprise projects across IT & Applications, Cloud & DevOps, Finance & Billing, Platform Engineering, and HR.
+   - Configures User 1 (Frontend Lead), User 2 (Backend Lead), and User 3 (Project Monitor) per project row before submission.
+
+3. **Department-Grouped Hierarchy in Service Catalog**:
+   - **`📂 By Department` View**: Groups catalog cards under glowing department banners (`IT & Applications`, `Cloud Infrastructure & DevOps`, `Finance & Billing Operations`, etc.) with project count badges and 1-click `+ Add Project to Department` shortcuts.
+   - **`🔲 Flat Grid` View**: Classic responsive card grid for high-density monitoring.
+   - **Department Filter Pills**: Instantly isolate projects by department with live counts.
+
+---
+
 ## 🏗️ Architecture
 
 ```text

@@ -83,6 +83,57 @@ router.get("/", async (_req, res, next) => {
   }
 });
 
+// POST /api/services/batch (Batch add multiple projects/services mapped to departments)
+router.post("/batch", async (req, res, next) => {
+  const payload = Array.isArray(req.body) ? { services: req.body } : req.body;
+  const parsed = z
+    .object({
+      services: z.array(createServiceSchema).min(1).max(50),
+    })
+    .safeParse(payload);
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "Invalid batch projects payload",
+      details: parsed.error.flatten(),
+    });
+  }
+
+  try {
+    const createdServices = [];
+    for (const item of parsed.data.services) {
+      // Ensure unique slug
+      let uniqueSlug = item.slug
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      if (!uniqueSlug) uniqueSlug = `project-${Date.now().toString(36)}`;
+      let candidateSlug = uniqueSlug;
+      let counter = 1;
+      while (await prisma.serviceAsset.findUnique({ where: { slug: candidateSlug } })) {
+        candidateSlug = `${uniqueSlug}-${counter++}`;
+      }
+
+      const created = await prisma.serviceAsset.create({
+        data: {
+          ...item,
+          slug: candidateSlug,
+        },
+      });
+      createdServices.push(created);
+    }
+
+    res.status(201).json({
+      success: true,
+      count: createdServices.length,
+      services: createdServices,
+      message: `Successfully provisioned ${createdServices.length} project(s) mapped across catalog departments.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // POST /api/services (Add project/service)
 router.post("/", async (req, res, next) => {
   const parsed = createServiceSchema.safeParse(req.body);
