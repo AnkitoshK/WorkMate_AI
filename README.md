@@ -213,61 +213,120 @@ WorkMate AI includes a straightforward, self-service password recovery flow that
 ```
 
 - **Zero-Dependency Architecture**: Teams can deploy and test locally or on preview environments without configuring complex email relays or waiting for OTP codes.
-- **Password Strength Enforced**: Requires a minimum of 6 characters with real-time confirmation matching.
 - **Existing Rules Preserved**: Resetting password does not bypass shift attendance records, the 1-hour cooling period, or role-based security boundaries.
 - **Immediate Access**: Once the password is updated, the user is immediately logged in to their account, avoiding redundant login prompts.
 
 ---
 
-### 10. Project-Scoped Read-Only Isolation & Viewer Flow (e.g. Softech Solution)
-WorkMate AI supports granular multi-tenant project isolation and client/auditor observation via the **`VIEWER`** role and **Engineering Squad / Project Scoping**:
+### 10. Multi-Client & Multi-Project Hierarchy: 3-Tier Mapping (Department ➔ Project ➔ Service Layer) & Client Tenant Data Isolation
+WorkMate AI provides an enterprise-grade multi-client and multi-project architecture designed specifically for organizations managing multiple concurrent client contracts and distinct software projects.
+
+#### The Core Scenario: Two Clients, Two Independent Projects
+Suppose your organization manages two different clients with separate software systems:
+- **Client 1 (e.g. Acme Corp)** ➔ Project: **`Enterprise Customer Web Portal`**
+- **Client 2 (e.g. Softech Solutions)** ➔ Project: **`Client B Customer CRM Portal`**
 
 ```text
-┌────────────────────────────────────────────────────────────────────────┐
-│                   Incident Ticket Routed to Project                    │
-│                      e.g. "Softech Solution"                           │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-         ┌──────────────────────────┴──────────────────────────┐
-         ▼                                                     ▼
-┌─────────────────────────────────┐   ┌─────────────────────────────────┐
-│       Software Engineer         │   │       Viewer / Read-Only        │
-│   (Squad: Softech Solution)     │   │   (Squad: Softech Solution)     │
-├─────────────────────────────────┤   ├─────────────────────────────────┤
-│ • See Softech Solution tickets  │   │ • See Softech Solution tickets  │
-│ • Update Status (In Progress...)│   │ • ❌ Status locked (Read-Only)  │
-│ • Mark Resolved & Close tickets │   │ • ❌ Lifecycle actions hidden   │
-│ • Post remediation comments     │   │ • ❌ Comment posting disabled   │
-│ • Run AI Copilot triage advice  │   │ • ❌ AI triage trigger disabled │
-│ • Punch daily shift attendance  │   │ • ❌ Punch Terminal disabled    │
-│ • Export Excel/CSV reports      │   │ • ❌ All Exports/Downloads OFF  │
-│ • Create & manage work tasks    │   │ • ❌ Task editing/creation OFF  │
-└─────────────────────────────────┘   └─────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│               ENTERPRISE 3-TIER HIERARCHY & MULTI-TENANT ISOLATION ARCHITECTURE         │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+
+    🏢 LEVEL 1: DEPARTMENT (Responsible Operational Unit)
+       │  e.g., IT & Applications, Software & Cloud Ops, Human Resources (HR)
+       │
+       ▼
+    🚀 LEVEL 2: CLIENT PROJECT & APPLICATION (Service Catalog Asset)
+       │  • Client 1: "Enterprise Customer Web Portal"  (SLA: 30m | Monitor: Client 1 Lead)
+       │  • Client 2: "Client B Customer CRM Portal"    (SLA: 15m | Monitor: Client 2 Lead)
+       │
+       ▼
+    ⚙️ LEVEL 3: AFFECTED SERVICE LAYER / ARCHITECTURE COMPONENT
+          • Frontend (User 1 - Frontend Lead)
+          • Backend (User 2 - Backend Lead)
+          • Database / Storage (Database Specialist)
+          • Cloud Infra / Deployment / Admin Portal
+
+       ┌─────────────────────────────────────────────────────────────────┐
+       │                 TENANT DATA ISOLATION ENGINE                     │
+       ├─────────────────────────────────┬───────────────────────────────┤
+       │       Client 1 (Acme Corp)      │    Client 2 (Softech Sol)     │
+       ├─────────────────────────────────┼───────────────────────────────┤
+       │ • Sees ONLY Project 1 Tickets   │ • Sees ONLY Project 2 Tickets │
+       │ • ❌ Project 2 completely hidden │ • ❌ Project 1 completely hidden│
+       │ • Real-time SLA countdown (30m) │ • Real-time SLA countdown (15m)│
+       │ • Live AI Triage & status notes │ • Live AI Triage & status notes│
+       │ • Read-Only Viewer (Safe-Mode)  │ • Read-Only Viewer (Safe-Mode) │
+       └─────────────────────────────────┴───────────────────────────────┘
 ```
 
-#### Detailed Operational Walkthrough:
-1. **User Provisioning & Project Assignment**:
-   - In the Provision New Team Member modal (SuperAdmin `+ Add User`) or Registration modal, select the **`👁️ Viewer / Read-Only`** role card.
-   - Under **Engineering Squad / Project**, assign the user to a dedicated project (e.g., `💻 Softech Solution`), select from registered microservices, or type any custom project name.
-   - **Example Setup**:
-     - **User 1 (Software Engineer)**: `rajesh@softech.com` | `Role: ENGINEER` | `Squad: Softech Solution`
-     - **User 2 (Auditor / Client)**: `anita@softech.com` | `Role: VIEWER` | `Squad: Softech Solution`
-2. **Project-Level Ticket Visibility**:
-   - Tickets logged with department `Softech Solution` or linked to a `Softech Solution` service asset are visible **strictly** to engineers and viewers assigned to `Softech Solution` (and SuperAdmins).
-   - Tickets from other squads (e.g., `DevOps & Cloud SRE`, `Backend & Core APIs`) are completely invisible to both users.
-3. **Multi-Layer Zero-Edit Enforcement**:
-   - **Ticket Lifecycle**: In the ticket detail modal, the status dropdown is disabled (`disabled={true}`) with a visual `👁️ Read-Only Viewer` tag. Action buttons (*Mark Resolved*, *Close & Archive*, *Start Progress*) are completely removed.
-   - **Comment Thread**: The comment submission form is replaced with an informational banner: *"Viewing Mode: You have read-only privileges. Posting comments or updates is disabled."*
-   - **Shift Attendance**: The Punch Terminal replaces punch-in and punch-out buttons with a protective banner: *"Viewer Account (Read-Only): Attendance logging and shift punches are disabled for your profile."*
-   - **Report Downloads**: Excel export buttons (`.xlsx`), CSV download buttons, and direct server CSV links are stripped from Active Tickets, Closed Tickets, Tasks, and Attendance tables.
-   - **Task Checkboxes**: Task status toggle checkboxes are disabled (`disabled={true}`) and the task creation card informs the viewer that task management is restricted.
-4. **Backend API Security Layer (Defense-in-Depth)**:
-   - Even if unauthorized API requests are sent via curl, scripts, or Postman, the Express backend returns `403 Forbidden`:
-     - `POST /api/attendance/punch` ➔ `403 Forbidden` (`Viewer accounts have read-only permissions and are not authorized to mark attendance punches`)
-     - `GET /api/attendance/export` & `/export-excel` ➔ `403 Forbidden` (`Viewer accounts do not have permission to download attendance reports`)
-     - `GET /api/closed-tickets/export` ➔ `403 Forbidden` (`Viewer accounts do not have permission to download closed ticket reports`)
-     - `POST /api/issues`, `PATCH /:id`, `DELETE /:id`, `POST /:id/comments` ➔ `403 Forbidden` (`Viewer accounts have read-only access`)
-     - `POST /api/tasks`, `PATCH /:id`, `DELETE /:id` ➔ `403 Forbidden` (`Viewer accounts have read-only access`)
+#### 1. 3-Tier Explicit Mapping During Ticket Creation
+Whenever an engineer, manager, or client logs an incident ticket, WorkMate AI enforces an explicit 3-tier architectural mapping so there is zero ambiguity about who owns the issue and who can view it:
+
+1. **Tier 1: Department (`department`)**:
+   - Identifies the organizational unit responsible for SLA delivery (e.g., *IT & Applications*, *DevOps & Cloud SRE*, *Customer Operations*).
+   - Automatically synchronizes when selecting a registered project from the Service Catalog.
+2. **Tier 2: Client Project (`serviceAssetId`)**:
+   - Directly links the ticket to the registered client project in the **Application & Project Service Catalog** (e.g., *Enterprise Customer Web Portal*).
+   - Automatically binds the project's target SLA (e.g. 30m), environment, and designated **Project Monitor (`monitorUserId`)**.
+3. **Tier 3: Affected Service Layer (`component`)**:
+   - Identifies the technical layer impacted: `FRONTEND`, `BACKEND`, `FULLSTACK`, `DATABASE`, `DYNAMIC_WEB`, `STATIC_WEB`, `ADMIN_PORTAL`, `CLOUD_INFRA`, `CI_CD_DEPLOY`.
+   - **Auto-routes specialist engineers**:
+     - `Frontend` / `Static Web` / `Dynamic Web` ➔ Auto-assigned to **User 1 (Frontend Lead)**.
+     - `Backend` / `Database` / `API` ➔ Auto-assigned to **User 2 (Backend Lead)**.
+4. **Live Confirmation Box**:
+   - Before submission, the ticket modal renders a glowing **3-Tier Hierarchy & Tenant Data Isolation Live Confirmation Card** confirming the exact Department, Client Project, Service Layer, and Scoped Visibility.
+
+---
+
+#### 2. How Clients Understand What is Happening & Which Tickets They See
+In multi-client environments, clients must have full transparency into their own issues without ever seeing another client's proprietary data:
+
+1. **Client Tenant Data Isolation (Zero Cross-Client Leakage)**:
+   - Each client user is assigned the **`👁️ VIEWER`** role and designated as the **Project Monitor (`monitorUserId`)** or assigned to their project's department.
+   - When **Client 1** logs in:
+     - The role-scoping engine verifies their identity and restricts the ticket feed:
+       `iss.serviceAssetId === Project1.id || iss.monitorUserId === Client1.id`
+     - Tickets belonging to **Client 2** are strictly filtered out on both the frontend and the Express backend (`403 Forbidden` / database query boundary).
+     - The top banner explicitly displays:
+       `🔒 Client Scoped Portal: Viewing tickets for Enterprise Customer Web Portal (Isolated Client Scope)`
+2. **How Clients Track Remediation in Real Time**:
+   - **Real-Time Lifecycle State**: Clients view tickets transition through `OPEN` ➔ `ASSIGNED` ➔ `IN_PROGRESS` ➔ `RESOLVED` in real time.
+   - **SLA Breach Countdown Clock**: Displays whether the incident is within target SLA (e.g., 30m SLA) or breached.
+   - **AI-Powered Diagnostics**: Clients see AI root-cause analysis and automated triage summaries explaining the incident's remediation path.
+   - **Technical Collaboration Stream**: Clients follow technical progress updates and patch notes posted by engineers while in safe read-only viewing mode.
+
+---
+
+#### 3. Dedicated Project-Scoped Filtering & Navigation Tools
+WorkMate AI includes four high-productivity features for filtering and isolating project tickets:
+
+1. **1-Click "👁️ View Tickets" from Service Catalog**:
+   - Every project card in the **Application & Project Service Catalog** includes an **`👁️ View Tickets (X)`** button.
+   - Clicking it navigates directly to the Incident Queue with the view locked to that project.
+2. **Dedicated "🌐 Project / Service Filter" Dropdown**:
+   - Located in the tickets filter bar beside *Department*, *Status*, and *Priority*.
+   - Allows instant switching between *All Projects* and any registered client application.
+3. **Dedicated "⭐ My Project Tickets" Quick Pill**:
+   - Mapped client monitors and project leads receive a prominent **`⭐ My Project Tickets`** button in the view scope bar.
+   - One click restricts the board exclusively to their assigned client projects.
+4. **Clickable Project Badges**:
+   - Clicking the project badge on any Kanban ticket card or Table row instantly filters the entire board to that project.
+
+---
+
+#### 4. Read-Only Viewer Safe-Mode Enforcement
+- **Ticket Lifecycle**: In the ticket detail modal, the status dropdown is disabled (`disabled={true}`) with a visual `👁️ Read-Only Viewer` tag. Action buttons (*Mark Resolved*, *Close & Archive*, *Start Progress*) are completely removed.
+- **Comment Thread**: The comment submission form is replaced with an informational banner: *"Viewing Mode: You have read-only privileges. Posting comments or updates is disabled."*
+- **Shift Attendance**: The Punch Terminal replaces punch-in and punch-out buttons with a protective banner: *"Viewer Account (Read-Only): Attendance logging and shift punches are disabled for your profile."*
+- **Report Downloads**: Excel export buttons (`.xlsx`), CSV download buttons, and direct server CSV links are stripped from Active Tickets, Closed Tickets, Tasks, and Attendance tables.
+- **Task Checkboxes**: Task status toggle checkboxes are disabled (`disabled={true}`) and the task creation card informs the viewer that task management is restricted.
+- **Backend API Security Layer (Defense-in-Depth)**:
+  - Even if unauthorized API requests are sent via curl, scripts, or Postman, the Express backend returns `403 Forbidden`:
+    - `POST /api/attendance/punch` ➔ `403 Forbidden` (`Viewer accounts have read-only permissions and are not authorized to mark attendance punches`)
+    - `GET /api/attendance/export` & `/export-excel` ➔ `403 Forbidden` (`Viewer accounts do not have permission to download attendance reports`)
+    - `GET /api/closed-tickets/export` ➔ `403 Forbidden` (`Viewer accounts do not have permission to download closed ticket reports`)
+    - `POST /api/issues`, `PATCH /:id`, `DELETE /:id`, `POST /:id/comments` ➔ `403 Forbidden` (`Viewer accounts have read-only access`)
+    - `POST /api/tasks`, `PATCH /:id`, `DELETE /:id` ➔ `403 Forbidden` (`Viewer accounts have read-only access`)
 
 ---
 

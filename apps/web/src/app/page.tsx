@@ -4754,9 +4754,18 @@ export default function WorkMateEnterpriseApp() {
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px" }}>
                 {isSuperAdmin ? (
-                  <span>Showing all organization tickets across departments.</span>
+                  <span>Showing all organization tickets across projects and departments.</span>
+                ) : activeUser?.role === "VIEWER" ? (
+                  <span style={{ color: "#67e8f9", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>🔒 Client Scoped Portal:</span>
+                    <span>
+                      {services.find((s) => s.monitorUserId === activeUser.id)?.name
+                        ? `Viewing tickets for ${services.find((s) => s.monitorUserId === activeUser.id)?.name} (Isolated Client Scope)`
+                        : "Viewing tickets for your designated client project only (Zero Cross-Client Visibility)"}
+                    </span>
+                  </span>
                 ) : (
-                  <span>Showing tickets assigned to you or created by you.</span>
+                  <span>Showing tickets assigned to you, reported by you, or in your monitored projects.</span>
                 )}
                 <span className="badge badge-assigned" style={{ fontSize: "11px" }}>
                   {sortedIssues.length} visible {isSuperAdmin ? `of ${issues.length} total` : ""}
@@ -8168,9 +8177,9 @@ export default function WorkMateEnterpriseApp() {
             <form onSubmit={handleCreateTicket}>
               {/* 1. DYNAMIC PROJECT SELECTOR INTERFACE */}
               <div className="form-group" style={{ marginBottom: "18px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px", flexWrap: "wrap", gap: "6px" }}>
                   <label className="form-label" style={{ margin: 0, display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>Service or Application (Optional)</span>
+                    <span style={{ color: "#38bdf8", fontWeight: "700" }}>🚀 1. Client Project & Service Scope (Service Catalog) *</span>
                     <span style={{ fontSize: "11px", color: "var(--accent-cyan)", fontWeight: "600" }}>
                       ({services.length} registered)
                     </span>
@@ -8205,6 +8214,9 @@ export default function WorkMateEnterpriseApp() {
                     </button>
                   </div>
                 </div>
+                <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "10px", marginTop: "0px" }}>
+                  Select which Client Project this incident belongs to (e.g. Enterprise Customer Web Portal or Client Project). The ticket is strictly isolated to this project, department, and assigned squad.
+                </p>
 
                 {/* INTERFACE OPTION 1: VISUAL PROJECT CARDS */}
                 {projectSelectMode === "cards" ? (
@@ -8398,9 +8410,9 @@ export default function WorkMateEnterpriseApp() {
               }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
                   <label className="form-label" style={{ margin: 0, display: "flex", alignItems: "center", gap: "6px", color: "#38bdf8", fontWeight: "700" }}>
-                    <span>🎯 Project Layer / Component Affected *</span>
+                    <span>⚙️ 2. Affected Service / Architecture Layer *</span>
                     <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "normal" }}>
-                      (Auto-maps specialist engineer & sets project monitor)
+                      (Auto-maps specialist engineer & sets client monitor)
                     </span>
                   </label>
                   <span style={{ fontSize: "11px", color: "#94a3b8" }}>
@@ -8509,11 +8521,53 @@ export default function WorkMateEnterpriseApp() {
                     </div>
                   );
                 })()}
+
+                {/* 3-TIER ARCHITECTURE & CLIENT TENANT SCOPING LIVE CONFIRMATION */}
+                {(() => {
+                  const selectedService = services.find((s) => s.id === ticketForm.serviceAssetId);
+                  const monitorUser = users.find((u) => u.id === (ticketForm.monitorUserId || selectedService?.monitorUserId));
+
+                  return (
+                    <div style={{
+                      marginTop: "12px",
+                      padding: "12px 14px",
+                      background: "linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95))",
+                      border: "1px solid rgba(56, 189, 248, 0.35)",
+                      borderRadius: "8px",
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+                      gap: "10px",
+                      fontSize: "11px",
+                    }}>
+                      <div>
+                        <span style={{ color: "#94a3b8", display: "block", fontSize: "10px", textTransform: "uppercase", fontWeight: "700" }}>🏢 1. Department</span>
+                        <strong style={{ color: "#38bdf8", fontSize: "12px" }}>{ticketForm.department || "IT & Applications (Auto-synced)"}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: "#94a3b8", display: "block", fontSize: "10px", textTransform: "uppercase", fontWeight: "700" }}>🚀 2. Client / Project</span>
+                        <strong style={{ color: "#fff", fontSize: "12px" }}>{selectedService?.name || "Auto-detect with AI"}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: "#94a3b8", display: "block", fontSize: "10px", textTransform: "uppercase", fontWeight: "700" }}>⚙️ 3. Service Layer</span>
+                        <strong style={{ color: "#a78bfa", fontSize: "12px" }}>{ticketForm.component || "FRONTEND"}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: "#94a3b8", display: "block", fontSize: "10px", textTransform: "uppercase", fontWeight: "700" }}>🔒 Tenant Data Isolation</span>
+                        <span style={{ color: monitorUser ? "#67e8f9" : "#34d399", fontWeight: "600", display: "block" }}>
+                          {monitorUser ? `👁️ Client Monitor: ${monitorUser.name}` : "🛡️ Squad Protected"}
+                        </span>
+                        <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                          {selectedService ? `Isolated to ${selectedService.name}` : "Project scoped"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
-              {/* 2. TICKET TITLE & DETAILS */}
+              {/* 3. TICKET TITLE & DETAILS */}
               <div className="form-group" style={{ minWidth: 0 }}>
-                <label className="form-label">Ticket Title *</label>
+                <label className="form-label"><span>📝 3. Ticket Title *</span></label>
                 <input
                   type="text"
                   className="form-input"
