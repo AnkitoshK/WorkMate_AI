@@ -798,6 +798,7 @@ export default function WorkMateEnterpriseApp() {
   const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [departmentFilter, setDepartmentFilter] = useState<string>("ALL");
+  const [projectFilter, setProjectFilter] = useState<string>("ALL");
 
   // Modals & Auth State
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
@@ -916,7 +917,7 @@ export default function WorkMateEnterpriseApp() {
   });
 
   // Enterprise Role Scoping Filter for Tickets
-  const [roleScopeFilter, setRoleScopeFilter] = useState<"MY_ROLE_DEFAULT" | "MY_ASSIGNED" | "MY_REPORTED" | "ALL_TICKETS">("MY_ROLE_DEFAULT");
+  const [roleScopeFilter, setRoleScopeFilter] = useState<"MY_ROLE_DEFAULT" | "MY_ASSIGNED" | "MY_REPORTED" | "MY_PROJECTS" | "ALL_TICKETS">("MY_ROLE_DEFAULT");
 
   // Form: New Service / Application (SuperAdmin)
   const [serviceForm, setServiceForm] = useState({
@@ -3713,12 +3714,23 @@ export default function WorkMateEnterpriseApp() {
     const matchesPriority = priorityFilter === "ALL" || iss.priority === priorityFilter;
     const matchesCategory = categoryFilter === "ALL" || iss.category === categoryFilter;
     const matchesDepartment = departmentFilter === "ALL" || iss.department === departmentFilter;
+    const matchesProject = projectFilter === "ALL" || iss.serviceAssetId === projectFilter;
 
     // 3. User & Role Scoping
     let matchesRoleScope = true;
 
     if (activeUser) {
-      if (activeUser.role === "VIEWER") {
+      if (roleScopeFilter === "MY_PROJECTS") {
+        const isProjectMember = Boolean(
+          (iss.serviceAsset && (
+            iss.serviceAsset.monitorUserId === activeUser.id ||
+            iss.serviceAsset.frontendUserId === activeUser.id ||
+            iss.serviceAsset.backendUserId === activeUser.id
+          )) ||
+          iss.monitorUserId === activeUser.id
+        );
+        matchesRoleScope = isProjectMember;
+      } else if (activeUser.role === "VIEWER") {
         // VIEWER role: Read-only access & real-time monitoring rights for tickets
         // where user is designated as project monitor, or on a project they monitor, or in their department/assigned!
         const isProjectMonitor =
@@ -3780,6 +3792,7 @@ export default function WorkMateEnterpriseApp() {
       matchesPriority &&
       matchesCategory &&
       matchesDepartment &&
+      matchesProject &&
       matchesRoleScope
     );
   });
@@ -3852,7 +3865,14 @@ export default function WorkMateEnterpriseApp() {
   });
 
   const myIssues = issues.filter(
-    (i) => activeUser && (i.assigneeId === activeUser.id || i.reporterId === activeUser.id)
+    (i) =>
+      activeUser &&
+      (i.assigneeId === activeUser.id ||
+        i.reporterId === activeUser.id ||
+        i.monitorUserId === activeUser.id ||
+        i.serviceAsset?.monitorUserId === activeUser.id ||
+        i.serviceAsset?.frontendUserId === activeUser.id ||
+        i.serviceAsset?.backendUserId === activeUser.id)
   );
   const myActiveIssuesCount = myIssues.filter(
     (i) => i.status !== "RESOLVED" && i.status !== "CLOSED"
@@ -4545,6 +4565,27 @@ export default function WorkMateEnterpriseApp() {
                 ))}
               </select>
 
+              <select
+                className="filter-select"
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(e.target.value)}
+                style={{
+                  minWidth: "185px",
+                  borderColor: projectFilter !== "ALL" ? "var(--accent-cyan)" : undefined,
+                  background: projectFilter !== "ALL" ? "rgba(56, 189, 248, 0.12)" : undefined,
+                  color: projectFilter !== "ALL" ? "#38bdf8" : undefined,
+                  fontWeight: projectFilter !== "ALL" ? "700" : "500",
+                }}
+                title="Filter tickets by Project / Service"
+              >
+                <option value="ALL">🌐 All Projects / Services ({services.length})</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {getServiceIcon(s.slug || s.type)} {s.name}
+                  </option>
+                ))}
+              </select>
+
               <select className="filter-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <option value="ALL">All Statuses</option>
                 <option value="OPEN">Open</option>
@@ -4620,7 +4661,7 @@ export default function WorkMateEnterpriseApp() {
           </div>
 
           {/* Active Search & Filter Feedback Bar */}
-          {(searchQuery || departmentFilter !== "ALL" || statusFilter !== "ALL" || priorityFilter !== "ALL" || ticketSortOrder !== "NEWEST") && (
+          {(searchQuery || departmentFilter !== "ALL" || projectFilter !== "ALL" || statusFilter !== "ALL" || priorityFilter !== "ALL" || ticketSortOrder !== "NEWEST") && (
             <div style={{
               display: "flex",
               alignItems: "center",
@@ -4644,6 +4685,20 @@ export default function WorkMateEnterpriseApp() {
                 {departmentFilter !== "ALL" && (
                   <span className="badge" style={{ background: "rgba(99, 102, 241, 0.15)", color: "#818cf8" }}>
                     Dept: {departmentFilter}
+                  </span>
+                )}
+                {projectFilter !== "ALL" && (
+                  <span className="badge" style={{ background: "rgba(6, 182, 212, 0.15)", color: "#22d3ee", border: "1px solid rgba(6, 182, 212, 0.3)", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                    <span>📦 Project:</span>
+                    <strong>{services.find((s) => s.id === projectFilter)?.name || "Selected Project"}</strong>
+                    <button
+                      type="button"
+                      onClick={() => setProjectFilter("ALL")}
+                      style={{ background: "transparent", border: "none", color: "#22d3ee", cursor: "pointer", padding: "0 2px", fontWeight: "bold", fontSize: "12px" }}
+                      title="Clear project filter"
+                    >
+                      ✕
+                    </button>
                   </span>
                 )}
                 {statusFilter !== "ALL" && (
@@ -4670,6 +4725,7 @@ export default function WorkMateEnterpriseApp() {
                 onClick={() => {
                   setSearchQuery("");
                   setDepartmentFilter("ALL");
+                  setProjectFilter("ALL");
                   setStatusFilter("ALL");
                   setPriorityFilter("ALL");
                   setTicketSortOrder("NEWEST");
@@ -4709,61 +4765,112 @@ export default function WorkMateEnterpriseApp() {
 
               {/* View Scope Quick Pills */}
               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                {isSuperAdmin ? (
-                  <>
-                    <button
-                      className={`btn ${roleScopeFilter === "ALL_TICKETS" || roleScopeFilter === "MY_ROLE_DEFAULT" ? "btn-primary" : "btn-secondary"}`}
-                      style={{ padding: "4px 10px", fontSize: "11px" }}
-                      onClick={() => setRoleScopeFilter("ALL_TICKETS")}
-                      title="View all organization tickets"
-                    >
-                      All Tickets ({issues.length})
-                    </button>
-                    <button
-                      className={`btn ${roleScopeFilter === "MY_ASSIGNED" ? "btn-primary" : "btn-secondary"}`}
-                      style={{ padding: "4px 10px", fontSize: "11px" }}
-                      onClick={() => setRoleScopeFilter("MY_ASSIGNED")}
-                      title="Tickets assigned to you"
-                    >
-                      Assigned to Me ({issues.filter((i) => i.assigneeId === activeUser.id).length})
-                    </button>
-                    <button
-                      className={`btn ${roleScopeFilter === "MY_REPORTED" ? "btn-primary" : "btn-secondary"}`}
-                      style={{ padding: "4px 10px", fontSize: "11px" }}
-                      onClick={() => setRoleScopeFilter("MY_REPORTED")}
-                      title="Tickets created by you"
-                    >
-                      Reported by Me ({issues.filter((i) => i.reporterId === activeUser.id).length})
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      className={`btn ${roleScopeFilter === "MY_ROLE_DEFAULT" ? "btn-primary" : "btn-secondary"}`}
-                      style={{ padding: "4px 10px", fontSize: "11px" }}
-                      onClick={() => setRoleScopeFilter("MY_ROLE_DEFAULT")}
-                      title="All your tickets"
-                    >
-                      All My Tickets ({myIssues.length})
-                    </button>
-                    <button
-                      className={`btn ${roleScopeFilter === "MY_ASSIGNED" ? "btn-primary" : "btn-secondary"}`}
-                      style={{ padding: "4px 10px", fontSize: "11px" }}
-                      onClick={() => setRoleScopeFilter("MY_ASSIGNED")}
-                      title="Only tickets assigned to you"
-                    >
-                      Assigned to Me ({issues.filter((i) => i.assigneeId === activeUser.id).length})
-                    </button>
-                    <button
-                      className={`btn ${roleScopeFilter === "MY_REPORTED" ? "btn-primary" : "btn-secondary"}`}
-                      style={{ padding: "4px 10px", fontSize: "11px" }}
-                      onClick={() => setRoleScopeFilter("MY_REPORTED")}
-                      title="Tickets created by you"
-                    >
-                      Reported by Me ({issues.filter((i) => i.reporterId === activeUser.id).length})
-                    </button>
-                  </>
-                )}
+                {(() => {
+                  const myMappedServices = services.filter(
+                    (s) =>
+                      activeUser &&
+                      (s.monitorUserId === activeUser.id ||
+                        s.frontendUserId === activeUser.id ||
+                        s.backendUserId === activeUser.id)
+                  );
+                  const mappedTicketsCount = issues.filter((i) =>
+                    myMappedServices.some((s) => s.id === i.serviceAssetId)
+                  ).length;
+
+                  return isSuperAdmin ? (
+                    <>
+                      <button
+                        className={`btn ${roleScopeFilter === "ALL_TICKETS" || roleScopeFilter === "MY_ROLE_DEFAULT" ? "btn-primary" : "btn-secondary"}`}
+                        style={{ padding: "4px 10px", fontSize: "11px" }}
+                        onClick={() => setRoleScopeFilter("ALL_TICKETS")}
+                        title="View all organization tickets"
+                      >
+                        All Tickets ({issues.length})
+                      </button>
+                      <button
+                        className={`btn ${roleScopeFilter === "MY_ASSIGNED" ? "btn-primary" : "btn-secondary"}`}
+                        style={{ padding: "4px 10px", fontSize: "11px" }}
+                        onClick={() => setRoleScopeFilter("MY_ASSIGNED")}
+                        title="Tickets assigned to you"
+                      >
+                        Assigned to Me ({issues.filter((i) => i.assigneeId === activeUser.id).length})
+                      </button>
+                      <button
+                        className={`btn ${roleScopeFilter === "MY_REPORTED" ? "btn-primary" : "btn-secondary"}`}
+                        style={{ padding: "4px 10px", fontSize: "11px" }}
+                        onClick={() => setRoleScopeFilter("MY_REPORTED")}
+                        title="Tickets created by you"
+                      >
+                        Reported by Me ({issues.filter((i) => i.reporterId === activeUser.id).length})
+                      </button>
+                      {myMappedServices.length > 0 && (
+                        <button
+                          className={`btn ${roleScopeFilter === "MY_PROJECTS" ? "btn-primary" : "btn-secondary"}`}
+                          style={{
+                            padding: "4px 10px",
+                            fontSize: "11px",
+                            borderColor: "rgba(6, 182, 212, 0.4)",
+                            color: roleScopeFilter === "MY_PROJECTS" ? "#fff" : "#22d3ee",
+                            background: roleScopeFilter === "MY_PROJECTS" ? undefined : "rgba(6, 182, 212, 0.12)",
+                          }}
+                          onClick={() => {
+                            setRoleScopeFilter("MY_PROJECTS");
+                            setProjectFilter("ALL");
+                          }}
+                          title={`View tickets belonging to your mapped projects (${myMappedServices.map((s) => s.name).join(", ")})`}
+                        >
+                          ⭐ My Project Tickets ({mappedTicketsCount})
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className={`btn ${roleScopeFilter === "MY_ROLE_DEFAULT" ? "btn-primary" : "btn-secondary"}`}
+                        style={{ padding: "4px 10px", fontSize: "11px" }}
+                        onClick={() => setRoleScopeFilter("MY_ROLE_DEFAULT")}
+                        title="All your tickets"
+                      >
+                        All My Tickets ({myIssues.length})
+                      </button>
+                      {myMappedServices.length > 0 && (
+                        <button
+                          className={`btn ${roleScopeFilter === "MY_PROJECTS" ? "btn-primary" : "btn-secondary"}`}
+                          style={{
+                            padding: "4px 10px",
+                            fontSize: "11px",
+                            borderColor: "rgba(6, 182, 212, 0.4)",
+                            color: roleScopeFilter === "MY_PROJECTS" ? "#fff" : "#22d3ee",
+                            background: roleScopeFilter === "MY_PROJECTS" ? undefined : "rgba(6, 182, 212, 0.12)",
+                          }}
+                          onClick={() => {
+                            setRoleScopeFilter("MY_PROJECTS");
+                            setProjectFilter("ALL");
+                          }}
+                          title={`View tickets belonging to your mapped projects (${myMappedServices.map((s) => s.name).join(", ")})`}
+                        >
+                          ⭐ My Project Tickets ({mappedTicketsCount})
+                        </button>
+                      )}
+                      <button
+                        className={`btn ${roleScopeFilter === "MY_ASSIGNED" ? "btn-primary" : "btn-secondary"}`}
+                        style={{ padding: "4px 10px", fontSize: "11px" }}
+                        onClick={() => setRoleScopeFilter("MY_ASSIGNED")}
+                        title="Only tickets assigned to you"
+                      >
+                        Assigned to Me ({issues.filter((i) => i.assigneeId === activeUser.id).length})
+                      </button>
+                      <button
+                        className={`btn ${roleScopeFilter === "MY_REPORTED" ? "btn-primary" : "btn-secondary"}`}
+                        style={{ padding: "4px 10px", fontSize: "11px" }}
+                        onClick={() => setRoleScopeFilter("MY_REPORTED")}
+                        title="Tickets created by you"
+                      >
+                        Reported by Me ({issues.filter((i) => i.reporterId === activeUser.id).length})
+                      </button>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           ) : null}
@@ -4819,6 +4926,7 @@ export default function WorkMateEnterpriseApp() {
                 onClick={() => {
                   setSearchQuery("");
                   setDepartmentFilter("ALL");
+                  setProjectFilter("ALL");
                   setStatusFilter("ALL");
                   setPriorityFilter("ALL");
                   setTicketSortOrder("NEWEST");
@@ -4878,7 +4986,22 @@ export default function WorkMateEnterpriseApp() {
                             {/* Recognized Service / App & Component Layer */}
                             <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginBottom: "6px" }}>
                               {iss.serviceAsset && (
-                                <span style={{ fontSize: "11px", color: "var(--accent-cyan)", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setProjectFilter(iss.serviceAsset!.id);
+                                  }}
+                                  title={`Filter tickets by project: ${iss.serviceAsset.name}`}
+                                  style={{
+                                    fontSize: "11px",
+                                    color: "var(--accent-cyan)",
+                                    fontWeight: "700",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    cursor: "pointer",
+                                  }}
+                                >
                                   <span>{getServiceIcon(iss.serviceAsset.slug || iss.serviceAsset.type)}</span>
                                   <span>{iss.serviceAsset.name}</span>
                                 </span>
@@ -5008,7 +5131,21 @@ export default function WorkMateEnterpriseApp() {
                         </td>
                         <td><span className={`badge badge-${iss.priority.toLowerCase()}`}>{iss.priority}</span></td>
                         <td>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <div
+                            onClick={(e) => {
+                              if (iss.serviceAsset) {
+                                e.stopPropagation();
+                                setProjectFilter(iss.serviceAsset.id);
+                              }
+                            }}
+                            title={iss.serviceAsset ? `Filter tickets by project: ${iss.serviceAsset.name}` : undefined}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              cursor: iss.serviceAsset ? "pointer" : "default",
+                            }}
+                          >
                             <span>{getServiceIcon(iss.serviceAsset?.slug || iss.serviceAsset?.type)}</span>
                             <span style={{ fontWeight: "700", color: "#e2e8f0" }}>{iss.serviceAsset?.name || "General Service"}</span>
                           </div>
@@ -6446,18 +6583,33 @@ export default function WorkMateEnterpriseApp() {
                     gap: "8px",
                     flexWrap: "wrap",
                   }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      style={{ padding: "6px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "5px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.3)" }}
-                      onClick={() => {
-                        handleSelectServiceForTicket(serv.id);
-                        setIsNewTicketOpen(true);
-                      }}
-                      title="Log an incident ticket prefilling this project"
-                    >
-                      <span>⚡</span> + Raise Ticket
-                    </button>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ padding: "6px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "5px" }}
+                        onClick={() => {
+                          setProjectFilter(serv.id);
+                          setRoleScopeFilter("ALL_TICKETS");
+                          setActiveTab("tickets");
+                        }}
+                        title={`View all incident tickets for ${serv.name}`}
+                      >
+                        <span>👁️</span> View Tickets ({serv.activeIncidents || 0})
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ padding: "6px 12px", fontSize: "12px", display: "flex", alignItems: "center", gap: "5px", color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.3)" }}
+                        onClick={() => {
+                          handleSelectServiceForTicket(serv.id);
+                          setIsNewTicketOpen(true);
+                        }}
+                        title="Log an incident ticket prefilling this project"
+                      >
+                        <span>⚡</span> + Raise Ticket
+                      </button>
+                    </div>
 
                     {activeUser?.role === "SUPER_ADMIN" && (
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
