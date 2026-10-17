@@ -3955,26 +3955,28 @@ export default function WorkMateEnterpriseApp() {
           )) ||
           iss.monitorUserId === activeUser.id
         );
-        matchesRoleScope = isProjectMember;
-      } else if (activeUser.role === "VIEWER") {
-        // VIEWER role: Read-only access & real-time monitoring rights for tickets
-        // where user is designated as project monitor, or on a project they monitor, or in their department/assigned!
-        const isProjectMonitor =
-          iss.monitorUserId === activeUser.id ||
-          iss.serviceAsset?.monitorUserId === activeUser.id;
-        const userDept = (activeUser.department || "").trim().toLowerCase();
-        const isGlobal = userDept.includes("all engineering squads") || userDept.includes("global");
-
-        if (isGlobal || isProjectMonitor) {
-          matchesRoleScope = true;
+        if (activeUser.role === "VIEWER" && iss.monitorUserId && iss.monitorUserId !== activeUser.id) {
+          matchesRoleScope = false;
         } else {
-          const ticketDept = (iss.department || "").trim().toLowerCase();
-          const ticketAsset = (iss.serviceAsset?.name || "").trim().toLowerCase();
-          const isAssignedToUser = iss.assigneeId === activeUser.id;
-          const isReportedByUser = iss.reporterId === activeUser.id;
-          const matchesProjectOrDept = Boolean(userDept && (ticketDept === userDept || ticketAsset === userDept));
+          matchesRoleScope = isProjectMember;
+        }
+      } else if (activeUser.role === "VIEWER") {
+        // Strict Client Tenant Isolation (Zero Cross-Client Visibility):
+        // Client 1 can only see Client 1 tickets; Client 2 can only see Client 2 tickets.
+        const isDesignatedMonitor = iss.monitorUserId === activeUser.id;
+        const isProjectAssetMonitor = Boolean(iss.serviceAsset && iss.serviceAsset.monitorUserId === activeUser.id);
+        const isReportedByUser = iss.reporterId === activeUser.id;
+        const isAssignedToUser = iss.assigneeId === activeUser.id;
 
-          matchesRoleScope = matchesProjectOrDept || isAssignedToUser || isReportedByUser;
+        // If ticket has an explicit designated monitor that belongs to a different client/user, STRICTLY EXCLUDE:
+        if (iss.monitorUserId && iss.monitorUserId !== activeUser.id) {
+          matchesRoleScope = false;
+        } else if (roleScopeFilter === "MY_REPORTED") {
+          matchesRoleScope = isReportedByUser;
+        } else if (roleScopeFilter === "MY_ASSIGNED") {
+          matchesRoleScope = isAssignedToUser;
+        } else {
+          matchesRoleScope = isDesignatedMonitor || isProjectAssetMonitor || isReportedByUser || isAssignedToUser;
         }
       } else if (!isSuperAdmin) {
         // Engineer / Specialist / User login:
@@ -4090,16 +4092,26 @@ export default function WorkMateEnterpriseApp() {
     return isOwner || isLinkedToMyIssue;
   });
 
-  const myIssues = issues.filter(
-    (i) =>
-      activeUser &&
-      (i.assigneeId === activeUser.id ||
-        i.reporterId === activeUser.id ||
+  const myIssues = issues.filter((i) => {
+    if (!activeUser) return false;
+    if (activeUser.role === "VIEWER") {
+      if (i.monitorUserId && i.monitorUserId !== activeUser.id) return false;
+      return (
         i.monitorUserId === activeUser.id ||
         i.serviceAsset?.monitorUserId === activeUser.id ||
-        i.serviceAsset?.frontendUserId === activeUser.id ||
-        i.serviceAsset?.backendUserId === activeUser.id)
-  );
+        i.reporterId === activeUser.id ||
+        i.assigneeId === activeUser.id
+      );
+    }
+    return (
+      i.assigneeId === activeUser.id ||
+      i.reporterId === activeUser.id ||
+      i.monitorUserId === activeUser.id ||
+      i.serviceAsset?.monitorUserId === activeUser.id ||
+      i.serviceAsset?.frontendUserId === activeUser.id ||
+      i.serviceAsset?.backendUserId === activeUser.id
+    );
+  });
   const myActiveIssuesCount = myIssues.filter(
     (i) => i.status !== "RESOLVED" && i.status !== "CLOSED"
   ).length;
@@ -6845,11 +6857,25 @@ export default function WorkMateEnterpriseApp() {
           );
         };
 
-        const filteredServices = catalogDeptFilter === "ALL"
-          ? services
-          : services.filter((s) => s.department === catalogDeptFilter);
+        // Deduplicate services by ID and by unique (department + name) to prevent duplicate project cards
+        const uniqueServices = (() => {
+          const seenIds = new Set<string>();
+          const seenKeys = new Set<string>();
+          return services.filter((s) => {
+            if (!s.id || seenIds.has(s.id)) return false;
+            seenIds.add(s.id);
+            const key = `${(s.department || "").trim().toLowerCase()}:::${(s.name || "").trim().toLowerCase()}`;
+            if (seenKeys.has(key)) return false;
+            seenKeys.add(key);
+            return true;
+          });
+        })();
 
-        const registeredDepts = Array.from(new Set(services.map((s) => s.department).filter(Boolean)));
+        const filteredServices = catalogDeptFilter === "ALL"
+          ? uniqueServices
+          : uniqueServices.filter((s) => s.department === catalogDeptFilter);
+
+        const registeredDepts = Array.from(new Set(uniqueServices.map((s) => s.department).filter(Boolean)));
 
         return (
           <div>
@@ -6858,7 +6884,7 @@ export default function WorkMateEnterpriseApp() {
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <h2 style={{ fontSize: "20px", fontWeight: "800" }}>Application & Project Service Catalog</h2>
                   <span className="badge badge-accent" style={{ fontSize: "11px" }}>
-                    {services.length} Total Projects
+                    {uniqueServices.length} Total Projects
                   </span>
                 </div>
                 <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
@@ -6925,10 +6951,10 @@ export default function WorkMateEnterpriseApp() {
                     style={{ padding: "4px 10px", fontSize: "12px" }}
                     onClick={() => setCatalogDeptFilter("ALL")}
                   >
-                    All Departments ({services.length})
+                    All Departments ({uniqueServices.length})
                   </button>
                   {registeredDepts.map((deptName) => {
-                    const count = services.filter((s) => s.department === deptName).length;
+                    const count = uniqueServices.filter((s) => s.department === deptName).length;
                     const isSelected = catalogDeptFilter === deptName;
                     const deptIcon = ENTERPRISE_DEPARTMENTS.find((d) => d.id === deptName)?.icon || "📁";
                     return (
@@ -9789,12 +9815,12 @@ export default function WorkMateEnterpriseApp() {
                   );
                 })()}
 
-                {/* Instant 1-Click Sign In for Any Registered User ID */}
-                {users.length > 0 && (
-                  <div style={{ marginTop: "16px", padding: "12px 14px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "10px" }}>
+                {/* Instant 1-Click Sign In by User ID (RESTRICTED: SuperAdmin Rights Only) */}
+                {activeUser?.role === "SUPER_ADMIN" && users.length > 0 && (
+                  <div style={{ marginTop: "16px", padding: "12px 14px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(245, 158, 11, 0.25)", borderRadius: "10px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                      <span style={{ fontSize: "11.5px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span>⚡</span> Instant Sign In by User ID
+                      <span style={{ fontSize: "11.5px", fontWeight: "700", color: "#fbbf24", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>👑</span> Instant Sign In by User ID (SuperAdmin Only)
                       </span>
                       <span style={{ fontSize: "10.5px", color: "var(--accent-cyan)", fontWeight: "600" }}>
                         Click Any ID to Sign In Instantly
@@ -9817,7 +9843,7 @@ export default function WorkMateEnterpriseApp() {
                             cursor: "pointer",
                             transition: "all 0.15s ease",
                           }}
-                          title={`Click to instantly log in as ${u.name} (${u.role})`}
+                          title={`SuperAdmin: Click to instantly log in as ${u.name} (${u.role})`}
                         >
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
                             {u.avatar ? (

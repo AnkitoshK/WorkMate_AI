@@ -282,13 +282,14 @@ Whenever an engineer, manager, or client logs an incident ticket, WorkMate AI en
 In multi-client environments, clients must have full transparency into their own issues without ever seeing another client's proprietary data:
 
 1. **Client Tenant Data Isolation (Zero Cross-Client Leakage)**:
-   - Each client user is assigned the **`👁️ VIEWER`** role and designated as the **Project Monitor (`monitorUserId`)** or assigned to their project's department.
-   - When **Client 1** logs in:
-     - The role-scoping engine verifies their identity and restricts the ticket feed:
-       `iss.serviceAssetId === Project1.id || iss.monitorUserId === Client1.id`
-     - Tickets belonging to **Client 2** are strictly filtered out on both the frontend and the Express backend (`403 Forbidden` / database query boundary).
-     - The top banner explicitly displays:
-       `🔒 Client Scoped Portal: Viewing tickets for Enterprise Customer Web Portal (Isolated Client Scope)`
+   - Each client user is assigned the **`👁️ VIEWER`** role and designated as the **Project Monitor (`monitorUserId`)** for their specific project or ticket.
+   - **Cross-Client Exclusion Barrier**:
+     - When **Client 1** logs in, any ticket with `iss.monitorUserId === Client_2` is strictly and unconditionally excluded (`matchesRoleScope = false`).
+     - Generic department matches (e.g., both clients having tickets categorized under "IT & Applications") are prevented from leaking across client boundaries.
+     - The board strictly renders only tickets where `iss.monitorUserId === activeUser.id || iss.serviceAsset?.monitorUserId === activeUser.id || iss.reporterId === activeUser.id`.
+     - Cross-client visibility is mathematically 0%: Client 1 cannot view Client 2's tickets, and Client 2 cannot view Client 1's tickets.
+   - The top banner explicitly displays:
+     `🔒 Client Scoped Portal: Viewing tickets for your designated client project only (Zero Cross-Client Visibility)`
 2. **How Clients Track Remediation in Real Time**:
    - **Real-Time Lifecycle State**: Clients view tickets transition through `OPEN` ➔ `ASSIGNED` ➔ `IN_PROGRESS` ➔ `RESOLVED` in real time.
    - **SLA Breach Countdown Clock**: Displays whether the incident is within target SLA (e.g., 30m SLA) or breached.
@@ -348,6 +349,15 @@ WorkMate AI provides a high-throughput **Batch Provisioning Facility** allowing 
    - **`📂 By Department` View**: Groups catalog cards under glowing department banners (`IT & Applications`, `Cloud Infrastructure & DevOps`, `Finance & Billing Operations`, etc.) with project count badges and 1-click `+ Add Project to Department` shortcuts.
    - **`🔲 Flat Grid` View**: Classic responsive card grid for high-density monitoring.
    - **Department Filter Pills**: Instantly isolate projects by department with live counts.
+
+---
+
+#### 6. Enterprise Sign-In Security & Role-Based Access Controls
+- **Public / Standard Login Screen**:
+  - The "Instant Sign In by User ID" roster has been strictly removed for general users and unauthenticated guests to protect team identities and prevent unauthorized account switching.
+  - Standard users authenticate via email and password, with access to **"Previous Login Suggestions"** that remember only their own previous session on that device.
+- **SuperAdmin-Exclusive Session Rights**:
+  - Instant Sign-In and Session Switching (`authTab === "switch"`) are restricted exclusively to authenticated `SUPER_ADMIN` accounts for administrative auditing and support.
 
 ---
 

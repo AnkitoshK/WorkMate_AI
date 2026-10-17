@@ -102,6 +102,18 @@ router.post("/batch", async (req, res, next) => {
   try {
     const createdServices = [];
     for (const item of parsed.data.services) {
+      // Prevent duplicate creation with same name in same department
+      const existing = await prisma.serviceAsset.findFirst({
+        where: {
+          name: { equals: item.name, mode: "insensitive" },
+          department: { equals: item.department, mode: "insensitive" },
+        },
+      });
+      if (existing) {
+        createdServices.push(existing);
+        continue;
+      }
+
       // Ensure unique slug
       let uniqueSlug = item.slug
         .toLowerCase()
@@ -142,8 +154,34 @@ router.post("/", async (req, res, next) => {
   }
 
   try {
+    // Prevent duplicate creation with same name in same department
+    const existing = await prisma.serviceAsset.findFirst({
+      where: {
+        name: { equals: parsed.data.name, mode: "insensitive" },
+        department: { equals: parsed.data.department, mode: "insensitive" },
+      },
+    });
+    if (existing) {
+      return res.status(200).json(existing);
+    }
+
+    // Ensure unique slug
+    let uniqueSlug = parsed.data.slug
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    if (!uniqueSlug) uniqueSlug = `project-${Date.now().toString(36)}`;
+    let candidateSlug = uniqueSlug;
+    let counter = 1;
+    while (await prisma.serviceAsset.findUnique({ where: { slug: candidateSlug } })) {
+      candidateSlug = `${uniqueSlug}-${counter++}`;
+    }
+
     const service = await prisma.serviceAsset.create({
-      data: parsed.data,
+      data: {
+        ...parsed.data,
+        slug: candidateSlug,
+      },
     });
     res.status(201).json(service);
   } catch (error) {
