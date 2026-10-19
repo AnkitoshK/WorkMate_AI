@@ -141,6 +141,8 @@ model Issue {
   assigneeId        String?
   assignee          User?         @relation("AssignedIssues", fields: [assigneeId], references: [id], onDelete: SetNull)
   monitorUserId     String?       // Project Monitor / Viewer with view rights
+  mediaUrl          String?       // Attached screenshot, photo, or document (URL or Base64)
+  mediaName         String?       // Original filename or screenshot label
   tasks             Task[]
   comments          Comment[]
   resolvedAt        DateTime?
@@ -159,6 +161,8 @@ model Issue {
 model Comment {
   id            String   @id @default(cuid())
   content       String
+  mediaUrl      String?  // Attached screenshot, photo, or document (URL or Base64)
+  mediaName     String?  // Original filename or screenshot label
   isAiGenerated Boolean  @default(false)
   issueId       String
   issue         Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
@@ -224,6 +228,8 @@ model ClosedTicket {
   assigneeName       String?
   assigneeEmail      String?
   serviceAssetName   String?
+  mediaUrl           String?
+  mediaName          String?
   turnaroundDuration String?
   turnaroundHours    Float?
   closedAt           DateTime @default(now())

@@ -315,19 +315,20 @@ WorkMate AI includes four high-productivity features for filtering and isolating
 
 ---
 
-#### 4. Read-Only Viewer Safe-Mode Enforcement
-- **Ticket Lifecycle**: In the ticket detail modal, the status dropdown is disabled (`disabled={true}`) with a visual `👁️ Read-Only Viewer` tag. Action buttons (*Mark Resolved*, *Close & Archive*, *Start Progress*) are completely removed.
-- **Comment Thread**: The comment submission form is replaced with an informational banner: *"Viewing Mode: You have read-only privileges. Posting comments or updates is disabled."*
+#### 4. Read-Only Viewer Safe-Mode & Monitoring Collaboration Rights
+- **Ticket Lifecycle**: In the ticket detail modal, the status dropdown is disabled (`disabled={true}`) with a visual `👁️ Read-Only Viewer` tag. Action buttons (*Mark Resolved*, *Close & Archive*, *Start Progress*) are protected from structural mutation by viewers.
+- **Monitoring Comment & Media Rights**: Unlike basic status changes, viewers assigned to monitor tickets or reviewing project health **are explicitly granted rights to post comments, technical observations, and attach media/screenshots** in the discussion thread. Comments posted by viewers feature a distinct `👁️ Viewer / Monitor` identity pill.
 - **Shift Attendance**: The Punch Terminal replaces punch-in and punch-out buttons with a protective banner: *"Viewer Account (Read-Only): Attendance logging and shift punches are disabled for your profile."*
-- **Report Downloads**: Excel export buttons (`.xlsx`), CSV download buttons, and direct server CSV links are stripped from Active Tickets, Closed Tickets, Tasks, and Attendance tables.
-- **Task Checkboxes**: Task status toggle checkboxes are disabled (`disabled={true}`) and the task creation card informs the viewer that task management is restricted.
+- **Report Downloads**: Direct operational admin data download is restricted from standard viewer roles.
+- **Task Checkboxes**: Task status toggle checkboxes are disabled (`disabled={true}`) and the task creation card informs the viewer that task management is restricted to assigned engineers and managers.
 - **Backend API Security Layer (Defense-in-Depth)**:
-  - Even if unauthorized API requests are sent via curl, scripts, or Postman, the Express backend returns `403 Forbidden`:
+  - Unauthorized mutation attempts are intercepted by the Express backend:
     - `POST /api/attendance/punch` ➔ `403 Forbidden` (`Viewer accounts have read-only permissions and are not authorized to mark attendance punches`)
     - `GET /api/attendance/export` & `/export-excel` ➔ `403 Forbidden` (`Viewer accounts do not have permission to download attendance reports`)
     - `GET /api/closed-tickets/export` ➔ `403 Forbidden` (`Viewer accounts do not have permission to download closed ticket reports`)
-    - `POST /api/issues`, `PATCH /:id`, `DELETE /:id`, `POST /:id/comments` ➔ `403 Forbidden` (`Viewer accounts have read-only access`)
-    - `POST /api/tasks`, `PATCH /:id`, `DELETE /:id` ➔ `403 Forbidden` (`Viewer accounts have read-only access`)
+    - `PATCH /api/issues/:id`, `DELETE /api/issues/:id` ➔ `403 Forbidden` (`Viewer accounts cannot mutate ticket status or delete tickets`)
+    - `POST /api/issues/:id/comments` ➔ ✅ `201 Created` (`Authorized for all authenticated roles including Viewer/Monitors`)
+    - `POST /api/issues` ➔ ✅ `201 Created` (`Authorized for all authenticated team roles to raise tickets`)
 
 ---
 
@@ -382,6 +383,66 @@ WorkMate AI provides a high-throughput **Batch Provisioning Facility** allowing 
                 │   (Users, Issues, Comments)   │
                 └───────────────────────────────┘
 ```
+
+---
+
+### 11. Media & Screenshot Attachment Flow & Viewer Collaboration Rights
+
+WorkMate AI features an industrial-grade **Media & Screenshot Attachment Pipeline** enabling reporters, engineers, managers, and project monitors/viewers to upload, drag-and-drop, or paste image evidence and technical documentation directly into incident tickets and discussion threads.
+
+```text
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     USER ACTION: CAPTURE EVIDENCE                        │
+│   • Snipping Tool (Win+Shift+S) / Clipboard Screenshot                  │
+│   • Drag & Drop File into Comment / Post Box                            │
+│   • Browse File Selector (PNG, JPG, WEBP, GIF, SVG, PDF)                 │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                     │
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                   CLIENT-SIDE SMART PROCESSING                           │
+│   • Clipboard Event Interception (onPaste on Textarea)                   │
+│   • Client-Side Canvas Image Optimization (Resizes if >1.2MB to ~800KB)   │
+│   • Real-Time Thumbnail Preview Chip with File Name, Size & [✕ Remove]   │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                     │
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                  HIGH-SPEED PERSISTENCE ENGINE                           │
+│   1. Primary Route: POST /api/upload (Saves to static /uploads directory │
+│      or branches via S3-compatible Neon Object Storage)                  │
+│   2. Resilient Fallback: Self-contained Data URL Base64 Storage in DB   │
+│   3. Database Columns: mediaUrl (TEXT) & mediaName in Neon Postgres      │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                     │
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                   INTERACTIVE CONSUMPTION & LIGHTBOX                     │
+│   • Ticket Details Modal: Prominent "📎 Incident Media & Evidence" card   │
+│   • Discussion Timeline: Compact responsive thumbnail in comment bubble  │
+│   • 1-Click High-Res Lightbox Modal: Zoom, Pan, Download & Fullscreen    │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Key Capabilities & Process Flow:
+
+1. **Universal Clipboard Paste (Ctrl+V)**:
+   - Team members taking screenshots with Windows Snipping Tool (`Win + Shift + S`) or macOS (`Cmd + Shift + 4`) can simply focus on the ticket description or comment input and press `Ctrl + V`.
+   - The platform instantly intercepts the clipboard image data, runs client-side optimization, and generates a visual preview chip.
+
+2. **Drag & Drop Attachment Zone**:
+   - Both the **Create Ticket Modal** and **Ticket Discussion Box** act as live drag-and-drop zones with real-time border illumination (`.drag-over`) when hovering media files over the box.
+
+3. **Viewer & Monitor Role Collaborative Rights**:
+   - Clients, auditors, and project monitors utilizing the `VIEWER` role possess verified rights to submit technical comments and attach screenshots to any assigned or visible tickets.
+   - Comments submitted by viewers prominently display the `👁️ Viewer / Monitor` verification badge, keeping engineers informed of client feedback while protecting ticket lifecycle integrity (status alteration remains restricted to assigned staff).
+
+4. **Full-Resolution Interactive Lightbox**:
+   - Clicking any attached image thumbnail in ticket descriptions or comment timelines instantly opens the **Full-Resolution Lightbox Modal** with backdrop blur, image title, download button, and close controls.
+
+5. **Dual-Layer Fail-Safe Storage**:
+   - **Upload Endpoint (`POST /api/upload`)**: Saves media files to the server's static directory (`/uploads/...`) with 50MB payload limits configured in Express middleware.
+   - **Resilient Fallback**: If network interruptions occur, the image automatically falls back to an embedded Base64 Data URL, ensuring zero data loss during mission-critical field operations.
 
 ---
 

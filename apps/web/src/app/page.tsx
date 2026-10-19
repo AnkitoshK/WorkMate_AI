@@ -97,6 +97,8 @@ export interface Comment {
   isAiGenerated: boolean;
   createdAt: string;
   author: { id: string; name: string; role: Role; avatar?: string | null };
+  mediaUrl?: string | null;
+  mediaName?: string | null;
 }
 
 export interface Task {
@@ -141,6 +143,8 @@ export interface Issue {
   assigneeId?: string | null;
   assignee?: { id: string; name: string; email: string; role: Role; avatar?: string | null; department?: string | null } | null;
   monitorUserId?: string | null;
+  mediaUrl?: string | null;
+  mediaName?: string | null;
   comments?: Comment[];
   tasks?: Task[];
   _count?: { comments: number; tasks: number };
@@ -288,6 +292,49 @@ const formatTicketAge = (dateStr?: string | null): string => {
   } catch {
     return "";
   }
+};
+
+const isImageUrl = (url?: string | null): boolean => {
+  if (!url) return false;
+  if (url.startsWith("data:image/")) return true;
+  const clean = url.split("?")[0].toLowerCase();
+  return [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".bmp"].some((ext) => clean.endsWith(ext));
+};
+
+const formatFileSize = (bytes?: number): string => {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const compressImage = (dataUrl: string, maxDim = 1600, quality = 0.85): Promise<string> => {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") return resolve(dataUrl);
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width <= maxDim && height <= maxDim) {
+        return resolve(dataUrl);
+      }
+      if (width > height) {
+        height = Math.round((height * maxDim) / width);
+        width = maxDim;
+      } else {
+        width = Math.round((width * maxDim) / height);
+        height = maxDim;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return resolve(dataUrl);
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
 };
 
 export interface ActionToast {
@@ -845,6 +892,105 @@ export default function WorkMateEnterpriseApp() {
   const [catalogDeptFilter, setCatalogDeptFilter] = useState<string>("ALL");
   const [catalogViewMode, setCatalogViewMode] = useState<"grouped" | "grid">("grouped");
   const [newCommentText, setNewCommentText] = useState("");
+  const [commentMedia, setCommentMedia] = useState<{ url: string; name: string; size?: number; type?: string } | null>(null);
+  const [commentMediaUploading, setCommentMediaUploading] = useState(false);
+  const [ticketMedia, setTicketMedia] = useState<{ url: string; name: string; size?: number; type?: string } | null>(null);
+  const [ticketMediaUploading, setTicketMediaUploading] = useState(false);
+  const [lightboxMedia, setLightboxMedia] = useState<{ url: string; title?: string } | null>(null);
+  const [commentDragOver, setCommentDragOver] = useState(false);
+  const [ticketDragOver, setTicketDragOver] = useState(false);
+
+  // Helper to process, compress and upload screenshots/media
+  const processMediaFile = (file: File): Promise<{ url: string; name: string; size: number; type: string }> => {
+    return new Promise((resolve, reject) => {
+      if (file.size > 25 * 1024 * 1024) {
+        return reject(new Error("File size exceeds 25MB limit. Please attach a smaller file."));
+      }
+
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.onload = async () => {
+        let dataUrl = reader.result as string;
+        if (file.type.startsWith("image/") && file.size > 1.2 * 1024 * 1024) {
+          try {
+            dataUrl = await compressImage(dataUrl, 1600, 0.85);
+          } catch {
+            // fallback
+          }
+        }
+
+        try {
+          const res = await fetch(`${API_BASE}/api/upload`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              data: dataUrl,
+              name: file.name,
+              type: file.type,
+            }),
+          });
+          if (res.ok) {
+            const uploaded = await res.json();
+            const fullUrl = uploaded.url.startsWith("http")
+              ? uploaded.url
+              : `${API_BASE}${uploaded.url}`;
+            return resolve({
+              url: fullUrl,
+              name: uploaded.name || file.name,
+              size: uploaded.size || file.size,
+              type: file.type,
+            });
+          }
+        } catch (e) {
+          console.warn("Upload endpoint failed, utilizing embedded data URL:", e);
+        }
+
+        resolve({
+          url: dataUrl,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Helper to capture clipboard pasted screenshots (Ctrl+V)
+  const handlePasteMedia = async (e: React.ClipboardEvent, target: "comment" | "ticket") => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.indexOf("image") !== -1) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        try {
+          if (target === "comment") {
+            setCommentMediaUploading(true);
+            const processed = await processMediaFile(file);
+            setCommentMedia(processed);
+            triggerToast("info", "Screenshot Pasted", `Attached ${file.name || "screenshot.png"}`, "GENERAL");
+          } else {
+            setTicketMediaUploading(true);
+            const processed = await processMediaFile(file);
+            setTicketMedia(processed);
+            setTicketForm((prev) => ({ ...prev, mediaUrl: processed.url, mediaName: processed.name }));
+            triggerToast("info", "Screenshot Pasted", `Attached ${file.name || "screenshot.png"}`, "GENERAL");
+          }
+        } catch (err: any) {
+          alert(err.message || "Failed to paste image");
+        } finally {
+          if (target === "comment") setCommentMediaUploading(false);
+          else setTicketMediaUploading(false);
+        }
+        break;
+      }
+    }
+  };
 
   // Attendance Remarks Modal State (For users re-punching after shift completion/logout)
   const [remarksModalOpen, setRemarksModalOpen] = useState(false);
@@ -892,6 +1038,8 @@ export default function WorkMateEnterpriseApp() {
     monitorUserId: "",
     runAiTriage: true,
     postAiComment: false,
+    mediaUrl: "",
+    mediaName: "",
   });
 
   // User AI Preferences (Persisted locally per browser / user)
@@ -2807,6 +2955,8 @@ export default function WorkMateEnterpriseApp() {
           department: ticketForm.department || undefined,
           location: ticketForm.location.trim() || undefined,
           affectedUrl: ticketForm.affectedUrl.trim() || undefined,
+          mediaUrl: ticketMedia?.url || ticketForm.mediaUrl || undefined,
+          mediaName: ticketMedia?.name || ticketForm.mediaName || undefined,
           runAiTriage: ticketForm.runAiTriage,
           postAiComment: ticketForm.postAiComment,
         }),
@@ -2851,6 +3001,7 @@ export default function WorkMateEnterpriseApp() {
       );
 
       setIsNewTicketOpen(false);
+      setTicketMedia(null);
       setTicketForm({
         title: "",
         description: "",
@@ -2865,6 +3016,8 @@ export default function WorkMateEnterpriseApp() {
         monitorUserId: "",
         runAiTriage: true,
         postAiComment: false,
+        mediaUrl: "",
+        mediaName: "",
       });
       await refreshAllData();
     } catch (err: any) {
@@ -3497,20 +3650,16 @@ export default function WorkMateEnterpriseApp() {
     }
   };
 
-  // Add Comment
+  // Add Comment (Enabled for all users including viewers)
   const handleAddComment = async (e: FormEvent) => {
     e.preventDefault();
-    if (!selectedIssue || !newCommentText.trim()) return;
+    if (!selectedIssue) return;
+    if (!newCommentText.trim() && !commentMedia) return;
 
     if (!activeUser) {
       alert("⚠️ Please sign in with your email and password first to post updates.");
       setAuthTab("login");
       setIsAuthModalOpen(true);
-      return;
-    }
-
-    if (activeUser.role === "VIEWER") {
-      alert("🔒 Access Denied: Viewer accounts have read-only access and cannot post comments.");
       return;
     }
 
@@ -3520,19 +3669,23 @@ export default function WorkMateEnterpriseApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: newCommentText.trim(),
+          content: newCommentText.trim() || (commentMedia ? "📎 [Attached Media / Screenshot]" : ""),
           authorId: activeUser.id,
           isAiGenerated: false,
+          mediaUrl: commentMedia?.url || null,
+          mediaName: commentMedia?.name || null,
+          requesterRole: activeUser.role,
         }),
       });
       if (res.ok) {
         setNewCommentText("");
+        setCommentMedia(null);
         await openTicketDetail(selectedIssue.id);
         await refreshAllData();
         triggerToast(
           "info",
           "Comment Posted",
-          "Update posted to the ticket timeline.",
+          activeUser.role === "VIEWER" ? "Viewer monitoring update posted." : "Update posted to the ticket timeline.",
           "GENERAL",
           selectedIssue.ticketNumber
         );
@@ -4143,15 +4296,13 @@ export default function WorkMateEnterpriseApp() {
         <div className="header-actions">
           {/* Operational Primary Actions */}
           <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-            {activeUser?.role !== "VIEWER" && (
-              <button
-                className="btn btn-primary"
-                style={{ height: "32px", padding: "0 12px", fontSize: "12px", fontWeight: "600", whiteSpace: "nowrap" }}
-                onClick={() => setIsNewTicketOpen(true)}
-              >
-                + New Ticket
-              </button>
-            )}
+            <button
+              className="btn btn-primary"
+              style={{ height: "32px", padding: "0 12px", fontSize: "12px", fontWeight: "600", whiteSpace: "nowrap" }}
+              onClick={() => setIsNewTicketOpen(true)}
+            >
+              + New Ticket
+            </button>
 
             {/* Add User Button (Only SuperAdmin has user creation authority) */}
             {activeUser?.role === "SUPER_ADMIN" && (
@@ -4890,11 +5041,9 @@ export default function WorkMateEnterpriseApp() {
                 </button>
               )}
 
-              {activeUser?.role !== "VIEWER" && (
-                <button className="btn btn-primary" onClick={() => setIsNewTicketOpen(true)}>
-                  + New Ticket
-                </button>
-              )}
+              <button className="btn btn-primary" onClick={() => setIsNewTicketOpen(true)}>
+                + New Ticket
+              </button>
             </div>
           </div>
 
@@ -5139,15 +5288,9 @@ export default function WorkMateEnterpriseApp() {
               <p style={{ fontSize: "13px", color: "var(--text-muted)", maxWidth: "560px", margin: "0 auto 16px" }}>
                 All test tickets have been purged from the system. You have a fresh, production-ready queue. Click below to log real incident tickets linked to your dynamic projects.
               </p>
-              {activeUser?.role !== "VIEWER" ? (
-                <button className="btn btn-primary" onClick={() => setIsNewTicketOpen(true)}>
-                  + Log Incident Ticket
-                </button>
-              ) : (
-                <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                  👁️ Viewer Account: Read-only access to assigned squad / project tickets.
-                </div>
-              )}
+              <button className="btn btn-primary" onClick={() => setIsNewTicketOpen(true)}>
+                + Log Incident Ticket
+              </button>
             </div>
           )}
 
@@ -8117,9 +8260,74 @@ export default function WorkMateEnterpriseApp() {
               Reported by {selectedIssue.reporter?.name || "Operator"} · {selectedIssue.location ? `📍 ${selectedIssue.location}` : "No location"} · {new Date(selectedIssue.createdAt).toLocaleString()}
             </div>
 
-            <div style={{ background: "rgba(255,255,255,0.03)", padding: "14px 16px", borderRadius: "10px", fontSize: "14px", lineHeight: "1.6", marginBottom: "20px" }}>
+            <div style={{ background: "rgba(255,255,255,0.03)", padding: "14px 16px", borderRadius: "10px", fontSize: "14px", lineHeight: "1.6", marginBottom: selectedIssue.mediaUrl ? "12px" : "20px" }}>
               {selectedIssue.description}
             </div>
+
+            {/* Attached Ticket Media / Screenshot */}
+            {selectedIssue.mediaUrl && (
+              <div style={{
+                background: "rgba(15, 23, 42, 0.6)",
+                border: "1px solid rgba(56, 189, 248, 0.25)",
+                borderRadius: "10px",
+                padding: "12px 16px",
+                marginBottom: "20px",
+              }}>
+                <div style={{ fontSize: "12px", fontWeight: "700", color: "#38bdf8", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>📎</span> Incident Media & Screenshot Evidence
+                </div>
+                {isImageUrl(selectedIssue.mediaUrl) ? (
+                  <div
+                    onClick={() => setLightboxMedia({ url: selectedIssue.mediaUrl!, title: selectedIssue.mediaName || selectedIssue.title })}
+                    className="media-thumbnail-card"
+                    style={{ maxWidth: "420px" }}
+                    title="Click to view full resolution"
+                  >
+                    <img
+                      src={selectedIssue.mediaUrl}
+                      alt={selectedIssue.mediaName || "Ticket Screenshot"}
+                      style={{ width: "100%", maxHeight: "240px", objectFit: "cover", display: "block" }}
+                    />
+                    <div style={{
+                      padding: "5px 10px",
+                      background: "rgba(15, 23, 42, 0.9)",
+                      fontSize: "11px",
+                      color: "#93c5fd",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        📷 {selectedIssue.mediaName || "Incident Evidence"}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "var(--accent-cyan)", flexShrink: 0 }}>🔍 Zoom</span>
+                    </div>
+                  </div>
+                ) : (
+                  <a
+                    href={selectedIssue.mediaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={selectedIssue.mediaName || "attachment"}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 14px",
+                      background: "rgba(56, 189, 248, 0.12)",
+                      border: "1px solid rgba(56, 189, 248, 0.35)",
+                      borderRadius: "6px",
+                      color: "#93c5fd",
+                      fontSize: "12px",
+                      textDecoration: "none",
+                    }}
+                  >
+                    <span>📄</span>
+                    <span>Download {selectedIssue.mediaName || "Incident Attachment"}</span>
+                  </a>
+                )}
+              </div>
+            )}
 
             {/* AI Assistant Advice Box with User Toggle & SuperAdmin Controls */}
             {!showAiAnalysis ? (
@@ -8535,10 +8743,15 @@ export default function WorkMateEnterpriseApp() {
                                     Automated Bot
                                   </span>
                                 )}
+                                {!c.isAiGenerated && c.author?.role === "VIEWER" && (
+                                  <span style={{ fontSize: "9px", background: "rgba(124, 58, 237, 0.2)", color: "#c084fc", padding: "1px 5px", borderRadius: "3px" }}>
+                                    👁️ Viewer / Monitor
+                                  </span>
+                                )}
                               </div>
                               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                 <span>{new Date(c.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                                {(activeUser?.role === "SUPER_ADMIN" || activeUser?.role === "ADMIN" || c.author?.id === activeUser?.id || c.isAiGenerated) && activeUser?.role !== "VIEWER" && (
+                                {(activeUser?.role === "SUPER_ADMIN" || activeUser?.role === "ADMIN" || c.author?.id === activeUser?.id || c.isAiGenerated) && (
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteComment(selectedIssue.id, c.id)}
@@ -8560,7 +8773,68 @@ export default function WorkMateEnterpriseApp() {
                                 )}
                               </div>
                             </div>
-                            <div style={{ fontSize: "13px", color: "#e2e8f0", whiteSpace: "pre-line" }}>{c.content}</div>
+                            {c.content && (
+                              <div style={{ fontSize: "13px", color: "#e2e8f0", whiteSpace: "pre-line", marginBottom: c.mediaUrl ? "8px" : "0" }}>
+                                {c.content}
+                              </div>
+                            )}
+
+                            {/* Render Comment Media Attachment if present */}
+                            {c.mediaUrl && (
+                              <div style={{ marginTop: "6px" }}>
+                                {isImageUrl(c.mediaUrl) ? (
+                                  <div
+                                    onClick={() => setLightboxMedia({ url: c.mediaUrl!, title: c.mediaName || "Attached Screenshot" })}
+                                    className="media-thumbnail-card"
+                                    style={{ maxWidth: "340px" }}
+                                    title="Click to view full resolution"
+                                  >
+                                    <img
+                                      src={c.mediaUrl}
+                                      alt={c.mediaName || "Attachment"}
+                                      style={{ width: "100%", maxHeight: "180px", objectFit: "cover", display: "block" }}
+                                    />
+                                    <div style={{
+                                      padding: "4px 8px",
+                                      background: "rgba(15, 23, 42, 0.85)",
+                                      fontSize: "11px",
+                                      color: "#93c5fd",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      gap: "8px",
+                                    }}>
+                                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                        📷 {c.mediaName || "Screenshot"}
+                                      </span>
+                                      <span style={{ fontSize: "10px", color: "var(--accent-cyan)", flexShrink: 0 }}>🔍 Zoom</span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <a
+                                    href={c.mediaUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download={c.mediaName || "attachment"}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "8px",
+                                      padding: "6px 12px",
+                                      background: "rgba(56, 189, 248, 0.1)",
+                                      border: "1px solid rgba(56, 189, 248, 0.3)",
+                                      borderRadius: "6px",
+                                      color: "#93c5fd",
+                                      fontSize: "12px",
+                                      textDecoration: "none",
+                                    }}
+                                  >
+                                    <span>📄</span>
+                                    <span>{c.mediaName || "Download Attachment"}</span>
+                                  </a>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ))
                       )}
@@ -8569,34 +8843,177 @@ export default function WorkMateEnterpriseApp() {
                 );
               })()}
 
-              {activeUser?.role === "VIEWER" ? (
-                <div style={{
-                  padding: "10px 14px",
-                  background: "rgba(59, 130, 246, 0.08)",
-                  border: "1px dashed rgba(59, 130, 246, 0.3)",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                  color: "#93c5fd",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px"
-                }}>
-                  <span>👁️</span>
-                  <span>Viewing Mode: You have read-only privileges. Posting comments or updates is disabled.</span>
-                </div>
-              ) : (
-                <form onSubmit={handleAddComment} style={{ display: "flex", gap: "10px" }}>
-                  <input
-                    type="text"
-                    className="form-input"
-                    style={{ flex: 1 }}
-                    placeholder="Post technical update or remediation notes..."
-                    value={newCommentText}
-                    onChange={(e) => setNewCommentText(e.target.value)}
-                  />
-                  <button className="btn btn-primary" type="submit" disabled={actionLoading}>Post</button>
+              {/* COMMENT INPUT & MEDIA ATTACHMENT BOX (ENABLED FOR ALL USERS INCLUDING VIEWERS) */}
+              <div style={{ marginTop: "12px" }}>
+                {activeUser?.role === "VIEWER" && (
+                  <div style={{
+                    padding: "6px 10px",
+                    background: "rgba(124, 58, 237, 0.12)",
+                    border: "1px solid rgba(124, 58, 237, 0.3)",
+                    borderRadius: "6px",
+                    fontSize: "11.5px",
+                    color: "#c084fc",
+                    marginBottom: "8px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}>
+                    <span>👁️</span>
+                    <span><strong>Viewer Monitoring Rights:</strong> You can submit monitoring notes, verification reports, and screenshots.</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleAddComment}>
+                  <div
+                    className={`media-attachment-box ${commentDragOver ? "drag-over" : ""}`}
+                    onDragOver={(e) => { e.preventDefault(); setCommentDragOver(true); }}
+                    onDragLeave={() => setCommentDragOver(false)}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      setCommentDragOver(false);
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) {
+                        try {
+                          setCommentMediaUploading(true);
+                          const processed = await processMediaFile(file);
+                          setCommentMedia(processed);
+                          triggerToast("info", "Media Attached", `Attached ${file.name}`, "GENERAL");
+                        } catch (err: any) {
+                          alert(err.message || "Failed to process dropped file");
+                        } finally {
+                          setCommentMediaUploading(false);
+                        }
+                      }
+                    }}
+                  >
+                    <textarea
+                      className="form-textarea"
+                      style={{
+                        width: "100%",
+                        minHeight: "68px",
+                        maxHeight: "150px",
+                        resize: "vertical",
+                        boxSizing: "border-box",
+                        background: "transparent",
+                        border: "none",
+                        outline: "none",
+                        color: "#f8fafc",
+                        fontSize: "13px",
+                        padding: "4px 2px",
+                      }}
+                      placeholder={activeUser?.role === "VIEWER"
+                        ? "Post viewer monitoring update or technical observation... (Ctrl+V to paste screenshot)"
+                        : "Post technical update or remediation notes... (Ctrl+V to paste screenshot)"
+                      }
+                      value={newCommentText}
+                      onChange={(e) => setNewCommentText(e.target.value)}
+                      onPaste={(e) => handlePasteMedia(e, "comment")}
+                    />
+
+                    {/* ATTACHED MEDIA CHIP */}
+                    {commentMedia && (
+                      <div className="media-preview-chip">
+                        {isImageUrl(commentMedia.url) ? (
+                          <img
+                            src={commentMedia.url}
+                            alt="Preview"
+                            style={{ width: "36px", height: "36px", borderRadius: "4px", objectFit: "cover", flexShrink: 0 }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: "20px" }}>📄</span>
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: "12px", color: "#f8fafc", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {commentMedia.name}
+                          </div>
+                          {commentMedia.size && (
+                            <div style={{ fontSize: "10.5px", color: "var(--text-dim)" }}>
+                              {formatFileSize(commentMedia.size)}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setCommentMedia(null)}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "#f87171",
+                            cursor: "pointer",
+                            fontSize: "13px",
+                            padding: "2px 6px",
+                          }}
+                          title="Remove attachment"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginTop: "8px",
+                      paddingTop: "8px",
+                      borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+                      flexWrap: "wrap",
+                      gap: "8px",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <label
+                          htmlFor="commentFileInput"
+                          className="btn btn-secondary"
+                          style={{
+                            padding: "4px 10px",
+                            fontSize: "11.5px",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                          }}
+                          title="Attach screenshot or document"
+                        >
+                          <span>📷</span> <span>Attach Media</span>
+                        </label>
+                        <input
+                          id="commentFileInput"
+                          type="file"
+                          accept="image/*,.pdf,.doc,.docx,.txt"
+                          style={{ display: "none" }}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              try {
+                                setCommentMediaUploading(true);
+                                const processed = await processMediaFile(file);
+                                setCommentMedia(processed);
+                                triggerToast("info", "Media Attached", `Attached ${file.name}`, "GENERAL");
+                              } catch (err: any) {
+                                alert(err.message || "Failed to attach file");
+                              } finally {
+                                setCommentMediaUploading(false);
+                              }
+                            }
+                          }}
+                        />
+                        <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>
+                          {commentMediaUploading ? "⏳ Uploading..." : "Ctrl+V to paste screenshot"}
+                        </span>
+                      </div>
+
+                      <button
+                        className="btn btn-primary"
+                        type="submit"
+                        disabled={actionLoading || commentMediaUploading || (!newCommentText.trim() && !commentMedia)}
+                        style={{ padding: "6px 14px", fontSize: "12px", fontWeight: "600" }}
+                      >
+                        {actionLoading ? "Posting..." : "Post Update"}
+                      </button>
+                    </div>
+                  </div>
                 </form>
-              )}
+              </div>
             </div>
           </div>
         </div>
@@ -9176,11 +9593,139 @@ export default function WorkMateEnterpriseApp() {
                 <textarea
                   className="form-textarea"
                   style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
-                  placeholder="Describe the issue, error messages, or steps to reproduce..."
+                  placeholder="Describe the issue, error messages, or steps to reproduce... (Tip: Press Ctrl+V to paste screenshot)"
                   value={ticketForm.description}
                   onChange={(e) => setTicketForm({ ...ticketForm, description: e.target.value })}
+                  onPaste={(e) => handlePasteMedia(e, "ticket")}
                   required
                 />
+              </div>
+
+              {/* MEDIA & SCREENSHOT ATTACHMENT BOX */}
+              <div className="form-group" style={{ minWidth: 0, marginBottom: "16px" }}>
+                <label className="form-label" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>📷</span> Attach Media / Screenshot (Optional)
+                  </span>
+                  <span style={{ fontSize: "11px", color: "var(--accent-cyan)", fontWeight: "normal" }}>
+                    PNG, JPG, WEBP, PDF or Paste with Ctrl+V
+                  </span>
+                </label>
+
+                <div
+                  className={`media-attachment-box ${ticketDragOver ? "drag-over" : ""}`}
+                  onDragOver={(e) => { e.preventDefault(); setTicketDragOver(true); }}
+                  onDragLeave={() => setTicketDragOver(false)}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    setTicketDragOver(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) {
+                      try {
+                        setTicketMediaUploading(true);
+                        const processed = await processMediaFile(file);
+                        setTicketMedia(processed);
+                        setTicketForm((prev) => ({ ...prev, mediaUrl: processed.url, mediaName: processed.name }));
+                        triggerToast("info", "Media Attached", `Attached ${file.name}`, "GENERAL");
+                      } catch (err: any) {
+                        alert(err.message || "Failed to process dropped file");
+                      } finally {
+                        setTicketMediaUploading(false);
+                      }
+                    }
+                  }}
+                >
+                  {!ticketMedia ? (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <label
+                          htmlFor="ticketFileInput"
+                          className="btn btn-secondary"
+                          style={{
+                            padding: "6px 12px",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            background: "rgba(56, 189, 248, 0.15)",
+                            borderColor: "rgba(56, 189, 248, 0.35)",
+                            color: "#38bdf8",
+                          }}
+                        >
+                          <span>📁</span> Browse File / Screenshot
+                        </label>
+                        <input
+                          id="ticketFileInput"
+                          type="file"
+                          accept="image/*,.pdf,.doc,.docx,.txt"
+                          style={{ display: "none" }}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              try {
+                                setTicketMediaUploading(true);
+                                const processed = await processMediaFile(file);
+                                setTicketMedia(processed);
+                                setTicketForm((prev) => ({ ...prev, mediaUrl: processed.url, mediaName: processed.name }));
+                                triggerToast("info", "Media Attached", `Attached ${file.name}`, "GENERAL");
+                              } catch (err: any) {
+                                alert(err.message || "Failed to attach file");
+                              } finally {
+                                setTicketMediaUploading(false);
+                              }
+                            }
+                          }}
+                        />
+                        <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                          {ticketMediaUploading ? "⏳ Uploading & processing..." : "Drag & drop image here, or paste with Ctrl+V"}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="media-preview-chip" style={{ justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                        {isImageUrl(ticketMedia.url) ? (
+                          <img
+                            src={ticketMedia.url}
+                            alt="Preview"
+                            style={{ width: "42px", height: "42px", borderRadius: "6px", objectFit: "cover", flexShrink: 0 }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: "24px" }}>📄</span>
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: "12px", fontWeight: "600", color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {ticketMedia.name}
+                          </div>
+                          {ticketMedia.size && (
+                            <div style={{ fontSize: "11px", color: "var(--text-dim)" }}>
+                              {formatFileSize(ticketMedia.size)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTicketMedia(null);
+                          setTicketForm((prev) => ({ ...prev, mediaUrl: "", mediaName: "" }));
+                        }}
+                        style={{
+                          background: "rgba(239, 68, 68, 0.15)",
+                          border: "1px solid rgba(239, 68, 68, 0.3)",
+                          color: "#f87171",
+                          borderRadius: "6px",
+                          padding: "4px 8px",
+                          fontSize: "11px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* WORKMATE AI AUTOMATION & ADVISORY CONTROLS */}
@@ -11481,6 +12026,62 @@ export default function WorkMateEnterpriseApp() {
           );
         })}
       </div>
+
+      {/* FULL RESOLUTION MEDIA LIGHTBOX MODAL */}
+      {lightboxMedia && (
+        <div className="lightbox-modal" onClick={() => setLightboxMedia(null)}>
+          <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+            <div style={{
+              width: "100%",
+              padding: "12px 18px",
+              background: "#1e293b",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+              boxSizing: "border-box",
+            }}>
+              <span style={{ fontSize: "13px", fontWeight: "700", color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                📷 {lightboxMedia.title || "Attached Image / Screenshot"}
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <a
+                  href={lightboxMedia.url}
+                  download={lightboxMedia.title || "screenshot"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-secondary"
+                  style={{ padding: "4px 10px", fontSize: "11px", textDecoration: "none" }}
+                  title="Download / Open original"
+                >
+                  ⬇️ Download / Open
+                </a>
+                <button
+                  type="button"
+                  className="close-btn"
+                  onClick={() => setLightboxMedia(null)}
+                  style={{ fontSize: "16px", padding: "4px 8px" }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div style={{ padding: "16px", maxHeight: "calc(88vh - 56px)", overflow: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <img
+                src={lightboxMedia.url}
+                alt={lightboxMedia.title || "Full Resolution Preview"}
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "calc(88vh - 90px)",
+                  objectFit: "contain",
+                  borderRadius: "6px",
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -25,6 +25,8 @@ const createIssueSchema = z.object({
   reporterId: z.string().min(1, "Reporter ID is required"),
   assigneeId: emptyToNull,
   monitorUserId: emptyToNull,
+  mediaUrl: emptyToNull,
+  mediaName: emptyToNull,
   runAiTriage: z.boolean().optional(),
   postAiComment: z.boolean().optional(),
 });
@@ -41,14 +43,22 @@ const updateIssueSchema = z.object({
   location: z.string().trim().max(200).optional().nullable(),
   assigneeId: z.string().optional().nullable(),
   monitorUserId: z.string().optional().nullable(),
+  mediaUrl: z.string().optional().nullable(),
+  mediaName: z.string().optional().nullable(),
   resolutionNotes: z.string().trim().max(4000).optional().nullable(),
 });
 
-const commentSchema = z.object({
-  content: z.string().trim().min(1).max(3000),
-  authorId: z.string().min(1),
-  isAiGenerated: z.boolean().optional(),
-});
+const commentSchema = z
+  .object({
+    content: z.string().trim().max(10000).optional().default(""),
+    authorId: z.string().min(1),
+    isAiGenerated: z.boolean().optional(),
+    mediaUrl: z.string().optional().nullable(),
+    mediaName: z.string().optional().nullable(),
+  })
+  .refine((data) => (data.content && data.content.length > 0) || Boolean(data.mediaUrl), {
+    message: "Either comment text or an attached screenshot/media file is required.",
+  });
 
 // GET /api/issues
 router.get("/", async (req, res, next) => {
@@ -84,10 +94,6 @@ router.get("/:id", async (req, res, next) => {
 
 // POST /api/issues
 router.post("/", async (req, res, next) => {
-  const requesterRole = (req.body.requesterRole || req.headers["x-user-role"]) as string;
-  if (requesterRole === "VIEWER") {
-    return res.status(403).json({ error: "Access Denied: Viewer accounts have read-only access and cannot create tickets." });
-  }
 
   console.log("📥 [POST /api/issues] Received ticket creation payload:", req.body);
   const parsed = createIssueSchema.safeParse(req.body);
@@ -171,11 +177,6 @@ router.delete("/", async (_req, res, next) => {
 
 // POST /api/issues/:id/comments
 router.post("/:id/comments", async (req, res, next) => {
-  const requesterRole = (req.body.requesterRole || req.headers["x-user-role"]) as string;
-  if (requesterRole === "VIEWER") {
-    return res.status(403).json({ error: "Access Denied: Viewer accounts have read-only access and cannot post comments." });
-  }
-
   const parsed = commentSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid comment", details: parsed.error.flatten() });
@@ -185,8 +186,10 @@ router.post("/:id/comments", async (req, res, next) => {
     const comment = await IssueService.addComment(
       req.params.id,
       parsed.data.authorId,
-      parsed.data.content,
-      parsed.data.isAiGenerated
+      parsed.data.content || (parsed.data.mediaUrl ? "📎 [Attached Media / Screenshot]" : ""),
+      parsed.data.isAiGenerated,
+      parsed.data.mediaUrl,
+      parsed.data.mediaName
     );
     res.status(201).json(comment);
   } catch (error) {

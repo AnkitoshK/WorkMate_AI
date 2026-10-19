@@ -93,6 +93,8 @@ export class IssueService {
     reporterId: string;
     assigneeId?: string | null;
     monitorUserId?: string | null;
+    mediaUrl?: string | null;
+    mediaName?: string | null;
     runAiTriage?: boolean;
     postAiComment?: boolean;
   }) {
@@ -229,6 +231,8 @@ export class IssueService {
         reporterId,
         assigneeId: assigneeId || null,
         monitorUserId: monitorUserId || null,
+        mediaUrl: data.mediaUrl || null,
+        mediaName: data.mediaName || null,
         aiSummary,
         aiSuggestedAction,
         aiRootCause,
@@ -270,6 +274,8 @@ export class IssueService {
       location?: string | null;
       assigneeId?: string | null;
       monitorUserId?: string | null;
+      mediaUrl?: string | null;
+      mediaName?: string | null;
       resolutionNotes?: string | null;
     }
   ) {
@@ -329,6 +335,8 @@ export class IssueService {
           assigneeName: updated.assignee?.name || "Lead Engineer",
           assigneeEmail: updated.assignee?.email || "",
           serviceAssetName: updated.serviceAsset?.name || "Standard Asset",
+          mediaUrl: updated.mediaUrl,
+          mediaName: updated.mediaName,
           turnaroundDuration: durationStr,
           turnaroundHours,
           closedAt: updated.closedAt || new Date(),
@@ -356,6 +364,8 @@ export class IssueService {
           assigneeName: updated.assignee?.name || "Lead Engineer",
           assigneeEmail: updated.assignee?.email || "",
           serviceAssetName: updated.serviceAsset?.name || "Standard Asset",
+          mediaUrl: updated.mediaUrl,
+          mediaName: updated.mediaName,
           turnaroundDuration: durationStr,
           turnaroundHours,
           closedAt: updated.closedAt || new Date(),
@@ -380,13 +390,22 @@ export class IssueService {
     return prisma.issue.deleteMany({});
   }
 
-  static async addComment(issueId: string, authorId: string, content: string, isAiGenerated = false) {
+  static async addComment(
+    issueId: string,
+    authorId: string,
+    content: string,
+    isAiGenerated = false,
+    mediaUrl?: string | null,
+    mediaName?: string | null
+  ) {
     return prisma.comment.create({
       data: {
         issueId,
         authorId,
         content,
         isAiGenerated,
+        mediaUrl: mediaUrl || null,
+        mediaName: mediaName || null,
       },
       include: {
         author: { select: { id: true, name: true, email: true, role: true, avatar: true } },
